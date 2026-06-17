@@ -14,8 +14,9 @@ import (
 
 // DefaultEmbeddingDim is the universal embedding dimension. Both OpenRouter
 // (text-embedding-3-small, max 1536) and Gemini fallback (gemini-embedding-2,
-// truncated to 1536) are pinned to this value so vectors are interchangeable.
-const DefaultEmbeddingDim = 1536
+// truncated) are pinned to 1024 to match the existing lobehub schema
+// (embeddings.embeddings public.vector(1024)).
+const DefaultEmbeddingDim = 1024
 
 // DefaultEmbedHTTPTimeout is the HTTP client timeout for embedding API calls.
 const DefaultEmbedHTTPTimeout = 30 * time.Second
