@@ -6,12 +6,14 @@ require (
 	github.com/getkawai/tools v0.1.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/kawai-network/x v1.0.41
+	github.com/kawai-network/x v1.0.47
 	github.com/pgvector/pgvector-go v0.4.0
 )
 
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/ethereum/go-ethereum v1.17.0 // indirect
+	github.com/holiman/uint256 v1.3.2 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
