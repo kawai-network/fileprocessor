@@ -144,17 +144,17 @@ func TestPgFileStoreCreateAndReadDocument(t *testing.T) {
 		t.Fatalf("CreateFile: %v", err)
 	}
 	docID, err := store.CreateDocument(ctx, DocumentRecord{
-		FileID:          fileID,
-		Title:           "x.txt",
-		Filename:        "x.txt",
-		Content:         "hello world",
-		FileType:        "txt",
-		TotalCharCount:  11,
-		TotalLineCount:  1,
-		Source:          "test",
-		SourceType:      "file",
-		PagesJSON:       "[{\"pageContent\":\"hello world\"}]",
-		Metadata:        map[string]any{"k": "v"},
+		FileID:         fileID,
+		Title:          "x.txt",
+		Filename:       "x.txt",
+		Content:        "hello world",
+		FileType:       "txt",
+		TotalCharCount: 11,
+		TotalLineCount: 1,
+		Source:         "test",
+		SourceType:     "file",
+		PagesJSON:      "[{\"pageContent\":\"hello world\"}]",
+		Metadata:       map[string]any{"k": "v"},
 	})
 	if err != nil {
 		t.Fatalf("CreateDocument: %v", err)

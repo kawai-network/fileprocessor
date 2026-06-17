@@ -384,14 +384,14 @@ func (p *Processor) saveDocument(ctx context.Context, fileDoc *FileDocument, fil
 	pagesJSON, _ := json.Marshal(fileDoc.Pages)
 
 	return p.store.CreateDocument(ctx, DocumentRecord{
-		FileID:          fileID,
-		Title:           filename,
-		Content:         fileDoc.Content,
-		FileType:        fileDoc.FileType,
-		Filename:        filename,
-		TotalCharCount:  fileDoc.TotalCharCount,
-		TotalLineCount:  fileDoc.TotalLineCount,
-		PagesJSON:       string(pagesJSON),
-		Metadata:        map[string]any{"raw": string(metaJSON)},
+		FileID:         fileID,
+		Title:          filename,
+		Content:        fileDoc.Content,
+		FileType:       fileDoc.FileType,
+		Filename:       filename,
+		TotalCharCount: fileDoc.TotalCharCount,
+		TotalLineCount: fileDoc.TotalLineCount,
+		PagesJSON:      string(pagesJSON),
+		Metadata:       map[string]any{"raw": string(metaJSON)},
 	})
 }

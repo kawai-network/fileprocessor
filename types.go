@@ -183,10 +183,10 @@ type Request struct {
 
 // Response is the result of [Processor.ProcessFile].
 type Response struct {
-	FileID       string   `json:"fileId"`
-	DocumentID   string   `json:"documentId"`
-	ChunkIDs     []string `json:"chunkIds,omitempty"`
-	Processing   bool     `json:"processing,omitempty"` // true when async work is in-flight
+	FileID     string   `json:"fileId"`
+	DocumentID string   `json:"documentId"`
+	ChunkIDs   []string `json:"chunkIds,omitempty"`
+	Processing bool     `json:"processing,omitempty"` // true when async work is in-flight
 	// DetectedFileType is the lowercase extension detected from the filename.
 	DetectedFileType string `json:"detectedFileType"`
 }

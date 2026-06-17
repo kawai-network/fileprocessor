@@ -141,7 +141,7 @@ func (s *PostgresFileStore) CreateFile(ctx context.Context, rec FileRecord) (str
 		metadata, created_at, updated_at, accessed_at, client_id, workspace_id
 	) VALUES (
 		$1, $2, $3, $4, $5, $6, $7,
-		$8, $9, $9, $9, $10, NULLIF($11, '')
+		$8, $9, $9, $9, NULLIF($10, ''), NULLIF($11, '')
 	) ON CONFLICT (id) DO UPDATE SET
 		file_type = EXCLUDED.file_type,
 		name      = EXCLUDED.name,
@@ -184,7 +184,7 @@ func (s *PostgresFileStore) CreateDocument(ctx context.Context, rec DocumentReco
 	) VALUES (
 		$1, $2, $3, $4, $5, $6, $7,
 		$8, $9, $10, $11::jsonb,
-		$12, $13, $14, NULLIF($15, '')
+		$12, $13, NULLIF($14, ''), NULLIF($15, '')
 	) ON CONFLICT (id) DO UPDATE SET
 		file_id          = EXCLUDED.file_id,
 		title            = EXCLUDED.title,
@@ -272,8 +272,8 @@ func (s *PostgresFileStore) CreateChunk(ctx context.Context, rec ChunkRecord) (s
 		user_id, client_id, workspace_id,
 		created_at, updated_at, accessed_at
 	) VALUES (
-		$1, $2, $3, $4, $5,
-		$6, $7, NULLIF($8, ''),
+		$1, $2, $3, $4, $5::jsonb,
+		$6, NULLIF($7, ''), NULLIF($8, ''),
 		$9, $9, $9
 	)`, chunkID, rec.Text, rec.Index, rec.Type, metaArg,
 		s.owner.UserID, s.owner.ClientID, s.owner.WorkspaceID,
@@ -401,7 +401,7 @@ func (c *PostgresChunkStore) CreateChunk(ctx context.Context, p CreateChunkParam
 		user_id, client_id, workspace_id, created_at, updated_at, accessed_at
 	) VALUES (
 		$1, $2, $3, $4, $5::jsonb,
-		$6, $7, NULLIF($8, ''), $9, $9, $9
+		$6, NULLIF($7, ''), NULLIF($8, ''), $9, $9, $9
 	)`, chunkID, p.Text, p.Index, p.Type, string(metaJSON),
 		owner.UserID, owner.ClientID, owner.WorkspaceID, now,
 	); err != nil {

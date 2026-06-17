@@ -59,8 +59,9 @@ Notes:
 | `rag_cache.go` | `EmbeddingCache` — in-memory SHA256-keyed LRU+TTL wrapping any `Embedder`. |
 | `rag_searcher.go` | `Searcher` — embed query → vector search → chunk hydration → fileID filter. |
 | `pgvector_store.go` | `PgVectorStore` — pgvector + HNSW vector store. Schema isolation (lives in `fileprocessor` schema), batch search via LATERAL, `SetEfSearch`/`ResetEfSearch`, `GetIndexStats`. |
+| `public_embeddings_store.go` | `PublicEmbeddingsStore` — `PgVectorStore` lookalike that targets `public.embeddings` (the lobehub table). Pinned to dim=1024 (the schema's hard constraint). Hydrates `file_id` via a join to `public.file_chunks`. Use it when your embedder produces 1024-dim vectors and you want to share storage with the host app's existing RAG. |
 | `pg_file_store.go` | `PostgresFileStore` (+ `PostgresChunkStore` adapter) — durable storage against the lobehub `public` schema (files/documents/chunks/file_chunks/document_chunks). One struct, two interfaces. |
-| `*_test.go` | `fileprocessor_test.go` (chunkers, loader, hash), `ragcore_test.go` (cache), `pgvector_store_test.go` (integration), `pg_file_store_test.go` (integration). |
+| `*_test.go` | `fileprocessor_test.go` (chunkers, loader, hash), `ragcore_test.go` (cache), `pgvector_store_test.go` (integration), `pg_file_store_test.go` (integration), `public_embeddings_store_test.go` (integration). |
 
 ## Architecture and data flow
 
@@ -142,6 +143,16 @@ Optional interfaces: `VLProvider` (image description), `LanguageModel` (OCR clea
 - **Markdown header splitter** (`mdsplitter.go`) honors code fences (``` and ~~~) and tracks the most-recently-active headers as `h2`/`h3` metadata on each chunk.
 - **Module path** is `github.com/kawai-network/fileprocessor`. Tests use the standard `testing` package (no testify in the actual `*_test.go` files in this repo, even though it's a transitive dep in `go.sum`).
 - **Module name + license** are already wired in `go.mod` and `LICENSE` (Apache-2.0).
+
+### PublicEmbeddingsStore gotchas (lobehub `public.embeddings`)
+
+- **Dim is pinned to 1024**. The lobehub schema hard-codes `vector(1024)`. The constructor rejects any other dim with a clear error. If your embedder produces 384/768/1536, use [`PgVectorStore`](#conventions-and-gotchas) in the `fileprocessor` schema instead.
+- **One embedding per chunk**: there's a UNIQUE constraint on `embeddings.chunk_id` (and the table has no `file_id` column). The `Upsert` uses `ON CONFLICT (chunk_id) DO UPDATE` to replace the vector in place.
+- **`file_id` is hydrated via JOIN to `public.file_chunks`** in `Search` results. Chunks not linked to any file return an empty `file_id`.
+- **Deletes cascade from `chunks`**: `embeddings.chunk_id` FKs to `chunks.id` with `ON DELETE CASCADE`. When `PostgresFileStore.DeleteFile` removes the chunks, the embeddings go with them. The store's own `DeleteByID`/`DeleteByFileID` are explicit deletes (faster, don't depend on FK cascade timing).
+- **HNSW index name is `public_embeddings_hnsw_idx`**: created on `init` if missing, with `vector_cosine_ops` by default. Reuses the index across process restarts.
+- **Rows written by this store have `model = 'fileprocessor'`**. The host app's own embeddings pipeline should use a different `model` value so the two can coexist.
+- **Empty `client_id`/`workspace_id` from the test user FKs** are wrapped in `NULLIF($N, '')` in the file-store SQL; the existing `files_client_id_user_id_unique` constraint treats two NULL client_ids as distinct, so multiple files per user work fine.
 
 ### PostgresFileStore gotchas (lobehub schema)
 

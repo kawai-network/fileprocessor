@@ -346,7 +346,7 @@ func TestPgVectorStoreUpsertBatchFallback(t *testing.T) {
 	// Now batch-insert overlapping + new IDs.
 	overlap := []VectorItem{
 		{ID: "p1", FileID: "f", Embedding: []float32{0.5, 0.5, 0}}, // conflict
-		{ID: "n1", FileID: "f", Embedding: []float32{0, 0, 1}},    // new
+		{ID: "n1", FileID: "f", Embedding: []float32{0, 0, 1}},     // new
 	}
 	if err := store.UpsertBatch(ctx, overlap); err != nil {
 		t.Fatalf("UpsertBatch overlap: %v", err)

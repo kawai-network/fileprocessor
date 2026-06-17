@@ -305,8 +305,8 @@ func (s *PgVectorStore) ResetEfSearch() error {
 
 // IndexStats reports basic HNSW index statistics.
 type PgIndexStats struct {
-	TotalVectors int64        `json:"total_vectors"`
-	IndexSize    string       `json:"index_size"`
+	TotalVectors int64         `json:"total_vectors"`
+	IndexSize    string        `json:"index_size"`
 	Config       *PgHNSWConfig `json:"config"`
 }
 
