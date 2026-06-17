@@ -1,22 +1,27 @@
 # fileprocessor
 
-A reusable Go library for file upload processing pipelines: content extraction, chunking, OCR/VL enrichment, and RAG integration.
+A reusable Go library for file upload processing pipelines: content extraction, chunking, OCR/VL enrichment, and RAG integration. The library bundles a DuckDB-backed vector store, embedding cache, semantic search, and the ingestion pipeline — all in a single module.
 
-The library is **database-agnostic**. Clients implement the [`FileStore`](types.go) interface (SQLite, Postgres, in-memory, anything) and pass a `*ragcore.RAGProcessor` for chunking + embedding + vector storage.
+The library is **database-agnostic** for the durable file/document side: clients implement the [`FileStore`](types.go) interface (SQLite, Postgres, in-memory, anything). The vector store uses [DuckDB](https://duckdb.org/) with the `vss` extension and an HNSW index.
 
 ## Features
 
 - **Type detection & extraction**: PDF, DOCX, XLSX, PPTX, TXT, Markdown, images, videos.
-- **Pluggable chunker**: `CharChunker` (default, matches ragcore) or `TokenChunker` (token-aware, client provides a tokenizer). Custom chunkers are supported via the `Chunker` interface.
+- **Pluggable chunker**: `CharChunker` (character-based, matches the built-in `RAGChunker`) or `TokenChunker` (token-aware, client provides a tokenizer). Custom chunkers are supported via the `Chunker` interface.
 - **Async image enrichment**: Tesseract OCR → LLM cleanup → optional VL model description → RAG.
-- **RAG integration**: Accepts `*ragcore.RAGProcessor` directly for chunking + embedding + vector storage.
-- **No DB deps**: The library never touches SQL directly. All persistence flows through `FileStore`.
+- **Vector store**: `DuckDBStore` with HNSW index, batch search via LATERAL joins, per-query metric override.
+- **Embedding cache**: `EmbeddingCache` (SHA256-keyed, TTL+LRU) wraps any `Embedder`.
+- **RAG ingestion**: `RAGProcessor` chunks documents, embeds each chunk, and persists chunks + vectors atomically.
+- **Semantic search**: `Searcher` (embed → ANN search → chunk hydration → file-ID filter).
+- **No DB deps**: The library never touches SQL directly for the file/document side. All persistence flows through `FileStore`.
 
 ## Installation
 
 ```bash
 go get github.com/kawai-network/fileprocessor
 ```
+
+Requires Go 1.26+ and CGO (DuckDB engine).
 
 ## Quick start
 
@@ -28,15 +33,21 @@ import (
     "log"
 
     "github.com/kawai-network/fileprocessor"
-    "github.com/kawai-network/ragcore"
 )
 
 func main() {
     // Client-provided (see adapters/ directory for a SQLite example).
     store := myapp.NewFileStore(db)
+    embedder := myEmbedder{}  // implements fileprocessor.Embedder
 
-    // Client wires ragcore.
-    ragProc := ragcore.NewRAGProcessor(store, duckdbStore, embedder, nil)
+    // DuckDB vector store.
+    duck, err := fileprocessor.NewDuckDBStore("/var/myapp/vectors.db", embedder.Dimension())
+    if err != nil { log.Fatal(err) }
+    defer duck.Close()
+
+    // RAG processor with embedded cache.
+    rag := fileprocessor.NewRAGProcessor(store, duck,
+        fileprocessor.NewEmbeddingCache(embedder, nil), nil)
 
     // Pick a chunker: char-based (default) or token-aware.
     chunker := fileprocessor.NewCharChunker(1000, 200)
@@ -44,27 +55,27 @@ func main() {
 
     proc, err := fileprocessor.New(fileprocessor.Config{
         FileStore:    store,
-        RAGProcessor: ragProc,
+        RAGProcessor: rag,
         Chunker:      chunker,
         FileBaseDir:  "/var/myapp/files",
-        // Optional providers:
-        // VLProvider:    myVLModel,
-        // LanguageModel: myLLM,
     })
-    if err != nil {
-        log.Fatal(err)
-    }
+    if err != nil { log.Fatal(err) }
 
     resp, err := proc.ProcessFile(context.Background(), fileprocessor.Request{
         FilePath:  "/tmp/report.pdf",
         Filename:  "report.pdf",
         EnableRAG: true,
     })
-    if err != nil {
-        log.Fatal(err)
-    }
+    if err != nil { log.Fatal(err) }
     log.Printf("file_id=%s document_id=%s chunks=%d",
         resp.FileID, resp.DocumentID, len(resp.ChunkIDs))
+
+    // Semantic search.
+    searcher := fileprocessor.NewSearcher(duck, store, embedder)
+    results, _ := searcher.SemanticSearch(ctx, fileprocessor.SearchParamsSearcher{
+        Query: "project timeline",
+        Limit: 10,
+    })
 }
 ```
 
@@ -100,11 +111,37 @@ func (s *myFileStore) GetFile(ctx context.Context, id string) (fileprocessor.Sto
 
 ## Chunker choice
 
-- **`CharChunker`** — character-based recursive splitter. Equivalent to ragcore's default. Use when token counting is unavailable or unnecessary.
+- **`CharChunker`** — character-based recursive splitter. Equivalent to the built-in `RAGChunker`. Use when token counting is unavailable or unnecessary.
 - **`TokenChunker`** — token-aware splitter. Pass any `Tokenizer func(string) int` (e.g. `tiktoken-go`, `unillm`, or a simple whitespace counter). Recommended when you need precise control over embedding context windows.
 - **Custom** — implement the `Chunker` interface directly.
 
-When `Config.Chunker` is nil, the processor delegates to `ragcore.RAGProcessor.ProcessFile` which uses ragcore's built-in char-based chunker.
+When `Config.Chunker` is nil, the processor delegates to `RAGProcessor.ProcessFile` which uses the built-in `RAGChunker`.
+
+## Vector store & search
+
+```go
+// DuckDB-backed HNSW vector store.
+store, _ := fileprocessor.NewDuckDBStore("/path/vectors.db", 384)
+store.SetEfSearch(200)                     // per-query recall/latency trade-off
+store.CompactIndex("vec_idx")              // reclaim tombstones
+
+// Batch search (66× faster than loop for 1000 queries).
+results, _ := store.BatchSearch(ctx, []fileprocessor.BatchSearchRequest{
+    {QueryID: "q1", Embedding: vec1},
+    {QueryID: "q2", Embedding: vec2},
+}, 10)
+```
+
+## RAG processor
+
+```go
+rag := fileprocessor.NewRAGProcessor(chunkStore, vectorStore, embedder, nil)
+rag.SetChunkSize(512, 50)                  // tune chunk/overlap
+ids, _ := rag.ProcessFile(ctx, fileprocessor.RAGProcessRequest{
+    FileID: "f1", DocumentID: "d1", Filename: "notes.md",
+})
+rag.DeleteFileVectors(ctx, "f1")           // cleanup on delete
+```
 
 ## License
 

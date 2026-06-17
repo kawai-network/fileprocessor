@@ -199,7 +199,7 @@ type ChunkOptions struct {
 }
 
 // FileDocument is the in-memory representation of a parsed file, before it is
-// persisted or chunked. It mirrors ragcore.FileDocument for compatibility.
+// persisted or chunked.
 type FileDocument struct {
 	Content        string
 	CreatedTime    time.Time

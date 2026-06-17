@@ -8,8 +8,6 @@ import (
 	"log/slog"
 	"strings"
 	"time"
-
-	"github.com/kawai-network/ragcore"
 )
 
 // Config wires a [Processor].
@@ -18,9 +16,9 @@ type Config struct {
 	FileStore FileStore
 	// RAGProcessor performs chunking + embedding + vector storage.
 	// When nil, ProcessFile skips RAG even if Request.EnableRAG is true.
-	RAGProcessor *ragcore.RAGProcessor
+	RAGProcessor *RAGProcessor
 	// Chunker controls how document content is split. When nil, the
-	// processor uses ragcore's built-in chunker via RAGProcessor.ProcessFile.
+	// processor uses the built-in chunker via RAGProcessor.ProcessFile.
 	// Provide a custom chunker (e.g. [TokenChunker]) to override that.
 	Chunker Chunker
 	// VLProvider generates image descriptions. Optional.
@@ -42,7 +40,7 @@ type Config struct {
 // save document → (async) image/video enrichment → (sync) RAG.
 type Processor struct {
 	store             FileStore
-	rag               *ragcore.RAGProcessor
+	rag               *RAGProcessor
 	chunker           Chunker
 	vl                VLProvider
 	lm                LanguageModel
@@ -186,28 +184,28 @@ func (p *Processor) DeleteFile(ctx context.Context, fileID string) error {
 // --- RAG -------------------------------------------------------------------
 
 // runRAG performs chunking + embedding for a file. When p.chunker is nil it
-// delegates to ragcore.RAGProcessor.ProcessFile. When a custom chunker is
+// delegates to RAGProcessor.ProcessFile. When a custom chunker is
 // configured it chunks locally, persists chunks via FileStore, and asks the
-// ragcore.RAGProcessor to process them.
+// RAGProcessor to process them.
 func (p *Processor) runRAG(ctx context.Context, fileID, documentID, filename, content string) ([]string, error) {
 	if p.rag == nil {
 		return nil, errors.New("fileprocessor: RAGProcessor not configured")
 	}
 
-	// No custom chunker: let ragcore do everything.
+	// No custom chunker: let RAGProcessor do everything.
 	if p.chunker == nil {
-		return p.rag.ProcessFile(ctx, ragcore.RAGProcessRequest{
+		return p.rag.ProcessFile(ctx, RAGProcessRequest{
 			FileID:     fileID,
 			DocumentID: documentID,
 			Filename:   filename,
 		})
 	}
 
-	// Custom chunker: chunk locally, persist each chunk, and ask ragcore to
-	// embed + upsert by reading the persisted document. ragcore's
+	// Custom chunker: chunk locally, persist each chunk, and ask the
+	// RAGProcessor to embed + upsert by reading the persisted document.
 	// ProcessFile re-chunks internally, so for true token-aware chunking we
-	// persist our chunks and then re-run ragcore.ProcessFile which will see
-	// the updated document content.
+	// persist our chunks and then re-run RAGProcessor.ProcessFile which will
+	// see the updated document content.
 	pieces := p.chunker.Chunk(content)
 	if len(pieces) == 0 {
 		_ = p.store.UpdateFileChunkStats(ctx, fileID, ChunkStats{
@@ -245,10 +243,10 @@ func (p *Processor) runRAG(ctx context.Context, fileID, documentID, filename, co
 		EmbeddingStatus: "custom-chunker-pending",
 	})
 
-	// Embedding pass via ragcore (reads document content, re-chunks with its
-	// own strategy, upserts vectors). This keeps embeddings consistent with
-	// the host's vector store configuration.
-	_, _ = p.rag.ProcessFile(ctx, ragcore.RAGProcessRequest{
+	// Embedding pass via RAGProcessor (reads document content, re-chunks with
+	// its own strategy, upserts vectors). This keeps embeddings consistent
+	// with the host's vector store configuration.
+	_, _ = p.rag.ProcessFile(ctx, RAGProcessRequest{
 		FileID:     fileID,
 		DocumentID: documentID,
 		Filename:   filename,
@@ -329,7 +327,7 @@ func (p *Processor) processImageDescriptionAsync(filePath, filename, documentID,
 	}
 
 	if enableRAG && p.rag != nil {
-		_, err := p.rag.ProcessFile(ctx, ragcore.RAGProcessRequest{
+		_, err := p.rag.ProcessFile(ctx, RAGProcessRequest{
 			FileID:     fileID,
 			DocumentID: documentID,
 			Filename:   filename,

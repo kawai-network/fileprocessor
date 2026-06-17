@@ -16,8 +16,8 @@ type Chunker interface {
 // --- CharChunker -----------------------------------------------------------
 
 // CharChunker is a character-based recursive text splitter. It matches the
-// behaviour of github.com/kawai-network/ragcore's default chunker and is the
-// recommended starting point.
+// behaviour of the package's built-in RAGChunker and is the recommended
+// starting point when you need caller-controlled chunk sizes.
 type CharChunker struct {
 	opts ChunkOptions
 }
