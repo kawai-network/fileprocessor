@@ -153,8 +153,13 @@ When `Config.Chunker` is nil, the processor delegates to `RAGProcessor.ProcessFi
 
 ## Vector store & search
 
+Two stores ship in this module. Pick by your embedder's output dim and where you want vectors to live.
+
+### `PgVectorStore` (default, schema-isolated)
+
+Writes into a dedicated `fileprocessor` schema. Any dim accepted. Use when you want full control over vector storage and isolation from the host app's tables.
+
 ```go
-// pgvector-backed HNSW vector store.
 store, _ := fileprocessor.NewPgVectorStore(ctx,
     "postgresql://user:pass@host:5432/db?sslmode=require", 384)
 store.SetEfSearch(200)                     // per-query recall/latency trade-off
@@ -170,6 +175,24 @@ stats, _ := store.GetIndexStats(ctx)
 log.Printf("vectors=%d index_size=%s", stats.TotalVectors, stats.IndexSize)
 ```
 
+### `PublicEmbeddingsStore` (lobehub, dim 1024)
+
+Targets the existing `public.embeddings` table directly. Dim is hard-pinned to **1024** (the schema's `vector(1024)` constraint). Use it when your embedder produces 1024-dim vectors and you want to share storage with the host app's existing RAG pipeline — deletes cascade from `chunks` and `file_id` is hydrated via a join to `public.file_chunks`.
+
+```go
+es, _ := fileprocessor.NewPublicEmbeddingsStore(ctx,
+    "postgresql://user:pass@host:5432/db?sslmode=require", 1024, nil)
+defer es.Close()
+
+// Upsert/Search/Delete are identical to PgVectorStore from the caller's
+// perspective — they all implement VectorStore.
+es.Upsert(ctx, chunkID, "", vec)             // chunkID is the natural key
+matches, _ := es.Search(ctx, vec, fileprocessor.SearchParams{Limit: 10})
+es.DeleteByFileID(ctx, fileID)              // cascades via file_chunks join
+```
+
+Rows written by `PublicEmbeddingsStore` are stamped with `model = 'fileprocessor'` so they coexist with the host app's existing RAG rows. The store creates an HNSW index named `public_embeddings_hnsw_idx` on first use; pre-existing HNSW indexes are left alone.
+
 ### Custom HNSW config
 
 ```go
@@ -181,7 +204,7 @@ store, _ := fileprocessor.NewPgVectorStoreWithConfig(ctx, dsn, 384, &fileprocess
 })
 ```
 
-Note: `Metric`, `M`, and `EfConstruction` are baked into the HNSW index at build time. Changing them requires dropping and recreating the index. `EfSearch` is a runtime knob.
+The same `PgHNSWConfig` is accepted by `NewPublicEmbeddingsStoreWithConfig`. Note: `Metric`, `M`, and `EfConstruction` are baked into the HNSW index at build time. Changing them requires dropping and recreating the index. `EfSearch` is a runtime knob.
 
 ### Schema isolation
 
