@@ -1,0 +1,23 @@
+# Secrets / local config
+.env
+.env.local
+.env*.local
+
+# Go
+/bin/
+/dist/
+*.test
+*.prof
+coverage.out
+coverage.html
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+*.sublime-*
+
+# Crush local state
+.crush/

@@ -166,3 +166,15 @@ type SearchResult struct {
 	Index      int
 	Metadata   map[string]string
 }
+
+// BatchSearchRequest is a single query inside a [VectorStore.BatchSearch] call.
+type BatchSearchRequest struct {
+	QueryID   string
+	Embedding []float32
+}
+
+// BatchSearchResult groups the matches for one query.
+type BatchSearchResult struct {
+	QueryID string
+	Matches []VectorMatch
+}
