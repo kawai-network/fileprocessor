@@ -1,0 +1,19 @@
+pg_file_store.go
+  s_c810b4519ffba8::t_2f6a521f48e06a 17,20,40,141,156,183,205,272,279,286,288,294,296,401,406,411,413,426,428
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "2ed30bcd1d340e2761277e190441f4111f370a65",
+  "prompts": {},
+  "sessions": {
+    "s_c810b4519ffba8": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f9a3d-559c-7f72-96b7-00df2478c42a",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
