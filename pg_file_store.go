@@ -14,10 +14,10 @@ import (
 
 // PostgresFileStoreOwner identifies the tenant that owns rows created by a
 // [PostgresFileStore]. The existing lobehub schema stamps every row with
-// user_id (required) and workspace_id / client_id (optional).
+// user_id (required) and tenant_id / client_id (optional).
 type PostgresFileStoreOwner struct {
 	UserID      string
-	WorkspaceID string // may be empty
+	TenantID string // may be empty
 	ClientID    string // may be empty
 }
 
@@ -37,7 +37,7 @@ type PostgresFileStoreOwner struct {
 // key "chunk_stats" to avoid a schema migration.
 //
 // Tenancy: every row is stamped with the Owner's user_id (and optionally
-// workspace_id / client_id). The Owner is configured at construction and
+// tenant_id / client_id). The Owner is configured at construction and
 // applies to all operations on this store instance.
 //
 // DeleteFile performs a manual cascade:
@@ -138,7 +138,7 @@ func (s *PostgresFileStore) CreateFile(ctx context.Context, rec FileRecord) (str
 
 	q := `INSERT INTO files (
 		id, user_id, file_type, name, size, url, source,
-		metadata, created_at, updated_at, accessed_at, client_id, workspace_id
+		metadata, created_at, updated_at, accessed_at, client_id, tenant_id
 	) VALUES (
 		$1, $2, $3, $4, $5, $6, $7,
 		$8, $9, $9, $9, NULLIF($10, ''), NULLIF($11, '')
@@ -153,7 +153,7 @@ func (s *PostgresFileStore) CreateFile(ctx context.Context, rec FileRecord) (str
 
 	if _, err := s.pool.Exec(ctx, q,
 		id, s.owner.UserID, rec.FileType, rec.Name, rec.Size, rec.URL,
-		rec.Source, metaArg, now, s.owner.ClientID, s.owner.WorkspaceID,
+		rec.Source, metaArg, now, s.owner.ClientID, s.owner.TenantID,
 	); err != nil {
 		return "", fmt.Errorf("pg_file_store: CreateFile: %w", err)
 	}
@@ -180,7 +180,7 @@ func (s *PostgresFileStore) CreateDocument(ctx context.Context, rec DocumentReco
 	q := `INSERT INTO documents (
 		id, user_id, file_id, title, content, file_type, filename,
 		total_char_count, total_line_count, metadata, pages,
-		source_type, source, client_id, workspace_id
+		source_type, source, client_id, tenant_id
 	) VALUES (
 		$1, $2, $3, $4, $5, $6, $7,
 		$8, $9, $10, $11::jsonb,
@@ -202,7 +202,7 @@ func (s *PostgresFileStore) CreateDocument(ctx context.Context, rec DocumentReco
 		id, s.owner.UserID, rec.FileID, rec.Title, rec.Content, rec.FileType,
 		rec.Filename, rec.TotalCharCount, rec.TotalLineCount, metaArg,
 		pagesArg, rec.SourceType, rec.Source,
-		s.owner.ClientID, s.owner.WorkspaceID,
+		s.owner.ClientID, s.owner.TenantID,
 	)
 	if err != nil {
 		return "", fmt.Errorf("pg_file_store: CreateDocument: %w", err)
@@ -269,31 +269,31 @@ func (s *PostgresFileStore) CreateChunk(ctx context.Context, rec ChunkRecord) (s
 
 	if _, err = tx.Exec(ctx, `INSERT INTO chunks (
 		id, text, index, type, metadata,
-		user_id, client_id, workspace_id,
+		user_id, client_id, tenant_id,
 		created_at, updated_at, accessed_at
 	) VALUES (
 		$1, $2, $3, $4, $5::jsonb,
 		$6, NULLIF($7, ''), NULLIF($8, ''),
 		$9, $9, $9
 	)`, chunkID, rec.Text, rec.Index, rec.Type, metaArg,
-		s.owner.UserID, s.owner.ClientID, s.owner.WorkspaceID,
+		s.owner.UserID, s.owner.ClientID, s.owner.TenantID,
 		now,
 	); err != nil {
 		return "", fmt.Errorf("pg_file_store: CreateChunk insert chunk: %w", err)
 	}
 
 	if rec.FileID != "" {
-		if _, err = tx.Exec(ctx, `INSERT INTO file_chunks (file_id, chunk_id, user_id, workspace_id, created_at)
+		if _, err = tx.Exec(ctx, `INSERT INTO file_chunks (file_id, chunk_id, user_id, tenant_id, created_at)
 			VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
-			rec.FileID, chunkID, s.owner.UserID, s.owner.WorkspaceID, now); err != nil {
+			rec.FileID, chunkID, s.owner.UserID, s.owner.TenantID, now); err != nil {
 			return "", fmt.Errorf("pg_file_store: CreateChunk insert file_chunks: %w", err)
 		}
 	}
 
 	if rec.DocumentID != "" {
-		if _, err = tx.Exec(ctx, `INSERT INTO document_chunks (document_id, chunk_id, user_id, workspace_id, created_at)
+		if _, err = tx.Exec(ctx, `INSERT INTO document_chunks (document_id, chunk_id, user_id, tenant_id, created_at)
 			VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
-			rec.DocumentID, chunkID, s.owner.UserID, s.owner.WorkspaceID, now); err != nil {
+			rec.DocumentID, chunkID, s.owner.UserID, s.owner.TenantID, now); err != nil {
 			return "", fmt.Errorf("pg_file_store: CreateChunk insert document_chunks: %w", err)
 		}
 	}
@@ -398,19 +398,19 @@ func (c *PostgresChunkStore) CreateChunk(ctx context.Context, p CreateChunkParam
 
 	if _, err := tx.Exec(ctx, `INSERT INTO chunks (
 		id, text, index, type, metadata,
-		user_id, client_id, workspace_id, created_at, updated_at, accessed_at
+		user_id, client_id, tenant_id, created_at, updated_at, accessed_at
 	) VALUES (
 		$1, $2, $3, $4, $5::jsonb,
 		$6, NULLIF($7, ''), NULLIF($8, ''), $9, $9, $9
 	)`, chunkID, p.Text, p.Index, p.Type, string(metaJSON),
-		owner.UserID, owner.ClientID, owner.WorkspaceID, now,
+		owner.UserID, owner.ClientID, owner.TenantID, now,
 	); err != nil {
 		return "", fmt.Errorf("pg_file_store: CreateChunk insert chunk: %w", err)
 	}
 
-	if _, err := tx.Exec(ctx, `INSERT INTO document_chunks (document_id, chunk_id, user_id, workspace_id, created_at)
+	if _, err := tx.Exec(ctx, `INSERT INTO document_chunks (document_id, chunk_id, user_id, tenant_id, created_at)
 		VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
-		p.DocumentID, chunkID, owner.UserID, owner.WorkspaceID, now); err != nil {
+		p.DocumentID, chunkID, owner.UserID, owner.TenantID, now); err != nil {
 		return "", fmt.Errorf("pg_file_store: CreateChunk insert document_chunks: %w", err)
 	}
 
@@ -423,9 +423,9 @@ func (c *PostgresChunkStore) CreateChunk(ctx context.Context, p CreateChunkParam
 		}
 	}
 	if fileID != "" {
-		if _, err := tx.Exec(ctx, `INSERT INTO file_chunks (file_id, chunk_id, user_id, workspace_id, created_at)
+		if _, err := tx.Exec(ctx, `INSERT INTO file_chunks (file_id, chunk_id, user_id, tenant_id, created_at)
 			VALUES ($1, $2, $3, NULLIF($4, ''), $5)`,
-			fileID, chunkID, owner.UserID, owner.WorkspaceID, now); err != nil {
+			fileID, chunkID, owner.UserID, owner.TenantID, now); err != nil {
 			return "", fmt.Errorf("pg_file_store: CreateChunk insert file_chunks: %w", err)
 		}
 	}
