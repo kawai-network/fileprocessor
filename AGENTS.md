@@ -46,7 +46,7 @@ Notes:
 | `errors.go` | `ErrNotFound`, `ErrUnsupportedFileType` (sentinel errors; use `errors.Is`). |
 | `loader.go` | `FileLoader` — extension detection + dispatch. Lists `textExtensions`, `imageExtensions`, `videoExtensions`. |
 | `loader_text.go` | Text/markdown/image/video content extractors (synchronous). |
-| `loader_office.go` | PDF/DOCX/XLSX/PPTX extractors via `github.com/getkawai/tools/gooxml` and `github.com/kawai-network/x/pdf`. |
+| `loader_office.go` | PDF/DOCX/XLSX/PPTX extractors via `github.com/yudaprama/tools/gooxml` and `github.com/kawai-network/x/pdf`. |
 | `processor.go` | `Processor` — the high-level orchestrator. `ProcessFile`, `DeleteFile`, async image/video, custom-chunker path. |
 | `chunker.go` | Pluggable `Chunker` interface plus `CharChunker` (recursive char splitter) and `TokenChunker` (caller-provided `Tokenizer`). |
 | `ocr.go` | Tesseract wrapper (`ExtractTextWithTesseract`) + LLM-based OCR cleanup (`CleanupOCRText`). |
@@ -138,7 +138,7 @@ Optional interfaces: `VLProvider` (image description), `LanguageModel` (OCR clea
 - **Tesseract** must be installed on `PATH` and is invoked via `exec.LookPath("tesseract")`. The library tries `eng+ind+jpn+chi_sim` first and falls back to default. If neither produces >20 chars, it falls back to the configured `VLProvider` (and finally to skipping).
 - **OCR cleanup** runs with `OCRCleanupTimeout` (default 30s) and is skipped entirely if `LanguageModel` is nil — in which case raw Tesseract output is used.
 - **Custom chunker path** (`Processor.Config.Chunker != nil`) persists chunks via `FileStore.CreateChunk` first, then re-runs `RAGProcessor.ProcessFile` which **re-chunks internally** with `RAGChunker`. Embeddings come from the re-chunked content, not the caller's chunks. Status is set to `"custom-chunker-pending"` between the two passes.
-- **Office docs** use `github.com/getkawai/tools/gooxml` and pass `/files` as the image URL prefix in `ToMarkdownWithImageURLs`. This is a string the host app is expected to serve images from.
+- **Office docs** use `github.com/yudaprama/tools/gooxml` and pass `/files` as the image URL prefix in `ToMarkdownWithImageURLs`. This is a string the host app is expected to serve images from.
 - **PDF extraction** uses `github.com/kawai-network/x/pdf`. Empty pages are replaced with `[Unable to extract text from this page]` so the chunker still has something to work with.
 - **Markdown header splitter** (`mdsplitter.go`) honors code fences (``` and ~~~) and tracks the most-recently-active headers as `h2`/`h3` metadata on each chunk.
 - **Module path** is `github.com/kawai-network/fileprocessor`. Tests use the standard `testing` package (no testify in the actual `*_test.go` files in this repo, even though it's a transitive dep in `go.sum`).

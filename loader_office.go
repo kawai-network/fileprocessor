@@ -5,9 +5,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/getkawai/tools/gooxml/document"
-	"github.com/getkawai/tools/gooxml/presentation"
-	"github.com/getkawai/tools/gooxml/spreadsheet"
+	"github.com/yudaprama/tools/gooxml/document"
+	"github.com/yudaprama/tools/gooxml/presentation"
+	"github.com/yudaprama/tools/gooxml/spreadsheet"
 	"github.com/kawai-network/x/pdf/extractor"
 	"github.com/kawai-network/x/pdf/model"
 )

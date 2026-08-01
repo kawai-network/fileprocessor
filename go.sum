@@ -4,8 +4,6 @@ github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/ethereum/go-ethereum v1.17.0 h1:2D+1Fe23CwZ5tQoAS5DfwKFNI1HGcTwi65/kRlAVxes=
 github.com/ethereum/go-ethereum v1.17.0/go.mod h1:2W3msvdosS/MCWytpqTcqgFiRYbTH59FxDJzqah120o=
-github.com/getkawai/tools v0.1.6 h1:kt2laGY+9GnDhCLzmrFf7MPITyFX7pjaFBDIXS3Hr80=
-github.com/getkawai/tools v0.1.6/go.mod h1:eK72Vb5V/IJgLR1ki60dgm2+89ckZXU7HntqxgKw+qc=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
 github.com/holiman/uint256 v1.3.2 h1:a9EgMPSC1AAaj1SZL5zIQD3WbwTuHrMGOerLjGmM/TA=

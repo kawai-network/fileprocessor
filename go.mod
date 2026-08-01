@@ -3,11 +3,11 @@ module github.com/kawai-network/fileprocessor
 go 1.26.0
 
 require (
-	github.com/getkawai/tools v0.1.6
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/kawai-network/x v1.0.47
 	github.com/pgvector/pgvector-go v0.4.0
+	github.com/yudaprama/tools v0.2.1
 )
 
 require (
@@ -28,3 +28,5 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/yudaprama/tools => ../tools
