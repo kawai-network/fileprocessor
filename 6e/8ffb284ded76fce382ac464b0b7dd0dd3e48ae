@@ -1,0 +1,21 @@
+types.go
+  s_a5436ec4520e75::t_bba29bf9fc2952 182-187
+processor.go
+  s_a5436ec4520e75::t_3e4722759e5841 363
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "6e8ffb284ded76fce382ac464b0b7dd0dd3e48ae",
+  "prompts": {},
+  "sessions": {
+    "s_a5436ec4520e75": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_041625328ffei4ocJm3wiWpwZc",
+        "model": "glm-5.2"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
