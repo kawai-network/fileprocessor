@@ -360,6 +360,7 @@ func (p *Processor) saveFileMetadata(ctx context.Context, req Request, fileType,
 		return "", err
 	}
 	return p.store.CreateFile(ctx, FileRecord{
+		ID:       req.FileID,
 		Name:     filename,
 		FileType: fileType,
 		Size:     info.Size,

@@ -179,6 +179,12 @@ type Request struct {
 	// dedup; it only forwards Hash + IsShared to [FileStore.CreateFile],
 	// which may use them as it sees fit.
 	IsShared bool
+	// FileID is an optional pre-generated id for the file record. When set,
+	// it is forwarded to [FileStore.CreateFile] as FileRecord.ID so the host
+	// can correlate an upload with its row by id rather than polling by name
+	// (which races under concurrent same-name uploads). Empty = the store
+	// assigns a fresh id.
+	FileID string
 }
 
 // Response is the result of [Processor.ProcessFile].
