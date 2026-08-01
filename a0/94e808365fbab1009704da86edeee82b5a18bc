@@ -1,0 +1,25 @@
+loader_office.go
+  s_14b34f0dd023aa::t_a4cbac486aa53b 8-10
+go.mod
+  s_14b34f0dd023aa::t_ccfdf2b8de1e7a 10
+  s_14b34f0dd023aa::t_aa1b5ca6c53e0c 31-32
+AGENTS.md
+  s_14b34f0dd023aa::t_aa607aa9b06cc6 49
+  s_14b34f0dd023aa::t_d22772c8676d79 141
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "a094e808365fbab1009704da86edeee82b5a18bc",
+  "prompts": {},
+  "sessions": {
+    "s_14b34f0dd023aa": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0413d3759ffepBBlNNB6Fg0xLA",
+        "model": "ling-3.0-flash-free"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
