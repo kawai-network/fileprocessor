@@ -1,0 +1,19 @@
+.github/workflows/auto-tag.yml
+  s_480a6de74993b8::t_26054a8e472d15 1-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "401aad98b6c35f1db167b09c4ceeea106f525491",
+  "prompts": {},
+  "sessions": {
+    "s_480a6de74993b8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_0414bac90ffeDEKkGZ5rsq7L1U",
+        "model": "deepseek-v4-flash-free"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
