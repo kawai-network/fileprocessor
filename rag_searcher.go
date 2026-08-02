@@ -3,7 +3,14 @@ package fileprocessor
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
+)
+
+const (
+	defaultVectorWeight  = 0.7
+	defaultKeywordWeight = 0.3
+	defaultRRFK          = 60.0
 )
 
 // Searcher performs semantic search: embed a query, look up similar vectors in
@@ -13,11 +20,22 @@ type Searcher struct {
 	store    VectorStore
 	chunks   ChunkStore
 	embedder Embedder
+	keyword  KeywordSearcher
 }
 
 // NewSearcher wires a Searcher.
 func NewSearcher(store VectorStore, chunks ChunkStore, embedder Embedder) *Searcher {
-	return &Searcher{store: store, chunks: chunks, embedder: embedder}
+	var keyword KeywordSearcher
+	if candidate, ok := store.(KeywordSearcher); ok {
+		keyword = candidate
+	}
+	return &Searcher{store: store, chunks: chunks, embedder: embedder, keyword: keyword}
+}
+
+// NewSearcherWithKeywordSearcher wires a separate lexical index, such as a
+// SQLite FTS5 BM25 projection, alongside the vector store.
+func NewSearcherWithKeywordSearcher(store VectorStore, chunks ChunkStore, embedder Embedder, keyword KeywordSearcher) *Searcher {
+	return &Searcher{store: store, chunks: chunks, embedder: embedder, keyword: keyword}
 }
 
 // SearchParamsSearcher controls a single Search call.
@@ -54,12 +72,17 @@ func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) (
 		return nil, fmt.Errorf("ragcore: vector store not configured")
 	}
 
-	matches, err := s.store.Search(ctx, embeddings[0], SearchParams{
-		Limit:  limit * 2,
-		Metric: p.Metric,
-	})
+	searchParams := SearchParams{Limit: limit * 2, Metric: p.Metric, FileIDs: p.FileIDs}
+	matches, err := s.store.Search(ctx, embeddings[0], searchParams)
 	if err != nil {
 		return nil, fmt.Errorf("ragcore: vector search: %w", err)
+	}
+	if s.keyword != nil {
+		keywordMatches, keywordErr := s.keyword.KeywordSearch(ctx, p.Query, searchParams)
+		if keywordErr != nil {
+			return nil, fmt.Errorf("ragcore: keyword search: %w", keywordErr)
+		}
+		matches = fuseRRF(matches, keywordMatches, limit*2)
 	}
 	if len(matches) == 0 {
 		return []SearchResult{}, nil
@@ -115,6 +138,7 @@ func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) (
 			FileName:   fileName,
 			Type:       ch.Type,
 			Index:      int(ch.Index),
+			ParentID:   ch.ParentID,
 			Metadata:   meta,
 		})
 		if len(results) >= limit {
@@ -123,6 +147,52 @@ func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) (
 	}
 
 	return results, nil
+}
+
+// fuseRRF merges vector and keyword rankings. RRF deliberately uses rank
+// rather than raw scores because cosine similarity and ts_rank are not on the
+// same scale.
+func fuseRRF(vectorMatches, keywordMatches []VectorMatch, limit int) []VectorMatch {
+	type fused struct {
+		match VectorMatch
+		score float64
+	}
+	byID := make(map[string]*fused, len(vectorMatches)+len(keywordMatches))
+	for rank, match := range vectorMatches {
+		entry := byID[match.ID]
+		if entry == nil {
+			entry = &fused{match: match}
+			byID[match.ID] = entry
+		}
+		entry.score += defaultVectorWeight / (defaultRRFK + float64(rank+1))
+	}
+	for rank, match := range keywordMatches {
+		entry := byID[match.ID]
+		if entry == nil {
+			entry = &fused{match: match}
+			byID[match.ID] = entry
+		}
+		if entry.match.FileID == "" {
+			entry.match.FileID = match.FileID
+		}
+		entry.score += defaultKeywordWeight / (defaultRRFK + float64(rank+1))
+	}
+	results := make([]fused, 0, len(byID))
+	for _, entry := range byID {
+		entry.match.Similarity = entry.score
+		results = append(results, *entry)
+	}
+	sort.SliceStable(results, func(i, j int) bool {
+		return results[i].score > results[j].score
+	})
+	if limit > len(results) {
+		limit = len(results)
+	}
+	out := make([]VectorMatch, limit)
+	for i := range out {
+		out[i] = results[i].match
+	}
+	return out
 }
 
 // SemanticSearchMultipleFiles is a convenience wrapper for callers that prefer

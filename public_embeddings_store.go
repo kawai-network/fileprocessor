@@ -262,15 +262,22 @@ func (s *PublicEmbeddingsStore) Search(ctx context.Context, embedding []float32,
 		limit = 10
 	}
 
+	where := ""
+	args := []any{pgvector.NewVector(embedding), limit}
+	if len(params.FileIDs) > 0 {
+		where = "WHERE fc.file_id = ANY($3)"
+		args = append(args, params.FileIDs)
+	}
 	q := fmt.Sprintf(`
 		SELECT e.chunk_id, COALESCE(fc.file_id, ''), e.embeddings %s $1 AS distance
 		FROM public.embeddings e
 		LEFT JOIN public.file_chunks fc ON fc.chunk_id = e.chunk_id
+		%s
 		ORDER BY distance ASC
 		LIMIT $2
-	`, op)
+	`, op, where)
 
-	rows, err := s.pool.Query(ctx, q, pgvector.NewVector(embedding), limit)
+	rows, err := s.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, fmt.Errorf("public_embeddings_store: search: %w", err)
 	}
@@ -291,6 +298,47 @@ func (s *PublicEmbeddingsStore) Search(ctx context.Context, embedding []float32,
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("public_embeddings_store: iterate search rows: %w", err)
+	}
+	return out, nil
+}
+
+// KeywordSearch performs PostgreSQL full-text search over chunks. It is used
+// by Searcher as the keyword half of hybrid RRF search.
+func (s *PublicEmbeddingsStore) KeywordSearch(ctx context.Context, query string, params SearchParams) ([]VectorMatch, error) {
+	limit := params.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+	where := "c.fts_vector @@ plainto_tsquery('simple', $1)"
+	args := []any{query, limit}
+	if len(params.FileIDs) > 0 {
+		where += " AND fc.file_id = ANY($3)"
+		args = append(args, params.FileIDs)
+	}
+	q := fmt.Sprintf(`
+		SELECT c.id, COALESCE(fc.file_id, ''),
+		       ts_rank_cd(c.fts_vector, plainto_tsquery('simple', $1)) AS score
+		FROM public.chunks c
+		JOIN public.file_chunks fc ON fc.chunk_id = c.id
+		WHERE %s
+		ORDER BY score DESC, c.id
+		LIMIT $2
+	`, where)
+	rows, err := s.pool.Query(ctx, q, args...)
+	if err != nil {
+		return nil, fmt.Errorf("public_embeddings_store: keyword search: %w", err)
+	}
+	defer rows.Close()
+	out := make([]VectorMatch, 0, limit)
+	for rows.Next() {
+		var match VectorMatch
+		if err := rows.Scan(&match.ID, &match.FileID, &match.Similarity); err != nil {
+			return nil, fmt.Errorf("public_embeddings_store: scan keyword row: %w", err)
+		}
+		out = append(out, match)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("public_embeddings_store: iterate keyword rows: %w", err)
 	}
 	return out, nil
 }

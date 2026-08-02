@@ -46,6 +46,16 @@ type SearchParams struct {
 	Limit int
 	// Metric overrides the store's default metric for this call. Empty keeps default.
 	Metric DistanceMetric
+	// FileIDs restricts the search to chunks belonging to these files when the
+	// backing store supports scoped search.
+	FileIDs []string
+}
+
+// KeywordSearcher is an optional text-search capability implemented by stores
+// that can search their chunk corpus with lexical ranking such as SQLite FTS5
+// BM25. VectorStore implementations that do not implement it remain vector-only.
+type KeywordSearcher interface {
+	KeywordSearch(ctx context.Context, query string, params SearchParams) ([]VectorMatch, error)
 }
 
 // VectorStore persists embeddings and supports similarity search.
@@ -146,11 +156,12 @@ type Document struct {
 
 // Chunk is a single stored chunk.
 type Chunk struct {
-	ID     string
-	Text   string
-	FileID string
-	Type   string
-	Index  int64
+	ID       string
+	Text     string
+	FileID   string
+	Type     string
+	Index    int64
+	ParentID string // UUID of the parent chunk (ParentChunk type), empty if none
 	// Metadata is the raw JSON string as stored.
 	Metadata string
 }
@@ -164,6 +175,7 @@ type SearchResult struct {
 	FileName   string
 	Type       string
 	Index      int
+	ParentID   string // UUID of the parent chunk, empty if none
 	Metadata   map[string]string
 }
 

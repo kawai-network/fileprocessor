@@ -442,7 +442,7 @@ func (c *PostgresChunkStore) GetChunksByIDs(ctx context.Context, ids []string) (
 		return nil, nil
 	}
 
-	q := `SELECT c.id, COALESCE(c.text, ''), COALESCE(fc.file_id, ''), COALESCE(c.type, ''), c.index, COALESCE(c.metadata::text, '')
+	q := `SELECT c.id, COALESCE(c.text, ''), COALESCE(fc.file_id, ''), COALESCE(c.type, ''), c.index, COALESCE(c.parent_id::text, ''), COALESCE(c.metadata::text, '')
 		  FROM chunks c
 		  LEFT JOIN file_chunks fc ON fc.chunk_id = c.id
 		  WHERE c.id = ANY($1)`
@@ -456,7 +456,7 @@ func (c *PostgresChunkStore) GetChunksByIDs(ctx context.Context, ids []string) (
 	byID := make(map[string]Chunk, len(ids))
 	for rows.Next() {
 		var ch Chunk
-		if err := rows.Scan(&ch.ID, &ch.Text, &ch.FileID, &ch.Type, &ch.Index, &ch.Metadata); err != nil {
+		if err := rows.Scan(&ch.ID, &ch.Text, &ch.FileID, &ch.Type, &ch.Index, &ch.ParentID, &ch.Metadata); err != nil {
 			return nil, fmt.Errorf("pg_file_store: scan chunk: %w", err)
 		}
 		byID[ch.ID] = ch
