@@ -10,6 +10,8 @@ require (
 	github.com/yudaprama/tools v0.2.2
 )
 
+replace github.com/yudaprama/tools => ../tools
+
 require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/ethereum/go-ethereum v1.17.0 // indirect

@@ -50,8 +50,6 @@ github.com/unidoc/timestamp v0.0.0-20200412005513-91597fd3793a h1:RLtvUhe4DsUDl6
 github.com/unidoc/timestamp v0.0.0-20200412005513-91597fd3793a/go.mod h1:j+qMWZVpZFTvDey3zxUkSgPJZEX33tDgU/QIA0IzCUw=
 github.com/unidoc/unitype v0.2.0 h1:N+ZKjwz8UDU0qa1IYzstDLffvQEctFo+bo6b6ZqW+9M=
 github.com/unidoc/unitype v0.2.0/go.mod h1:mafyug7zYmDOusqa7G0dJV45qp4b6TDAN+pHN7ZUIBU=
-github.com/yudaprama/tools v0.2.2 h1:z0dgE17cOgffsBYH4WLOi4hespEB6eCrpkkrtGOunss=
-github.com/yudaprama/tools v0.2.2/go.mod h1:rRWA+EhlNq8w6bgfWv0NZqsHOFMrvexOua0W2MWkGQk=
 golang.org/x/crypto v0.48.0 h1:/VRzVqiRSggnhY7gNRxPauEQ5Drw9haKdM0jqfcCFts=
 golang.org/x/crypto v0.48.0/go.mod h1:r0kV5h3qnFPlQnBSrULhlsRfryS2pmewsg+XfMgkVos=
 golang.org/x/image v0.36.0 h1:Iknbfm1afbgtwPTmHnS2gTM/6PPZfH+z2EFuOkSbqwc=
