@@ -119,7 +119,7 @@ Optional interfaces: `VLProvider` (image description), `LanguageModel` (OCR clea
 ## Conventions and gotchas
 
 - **Error sentinels**: `ErrNotFound`, `ErrUnsupportedFileType`. Detect with `errors.Is`. The library wraps store errors with these so the higher layers can distinguish missing records from real errors.
-- **ID assignment**: `FileStore`/`ChunkStore` should honor pre-populated `ID` fields when non-empty. `RAGProcessor` does pre-generate chunk IDs as `documentID-uuid`.
+- **ID assignment**: `FileStore`/`ChunkStore` should honor pre-populated `ID` fields when non-empty. `RAGProcessor` does pre-generate chunk IDs as `documentID-uuid`. Callers that need to correlate an upload with its `files` row by a known id pass it as `Request.FileID` — the processor forwards it to `FileStore.CreateFile` as `FileRecord.ID`.
 - **Dimensions must match**: `NewPgVectorStore(ctx, dsn, dim)` validates the existing `<schema>.vectors.embedding` column dimension via `pg_attribute.atttypmod`. Mismatch = error. Choose a dimension per database/schema and stick with it.
 - **Schema isolation**: `PgVectorStore` writes inside the `fileprocessor` schema (see `DefaultSchema`) by default — never `public`. `PostgresFileStore` writes inside `public` (the lobehub schema) directly because that's where `files`/`documents`/`chunks` already live.
 - **Vector types**: `pgvector.NewVector(embedding)` wraps the `[]float32` for binding. The store also validates the slice length on every `Upsert`/`Search` so a wrong-dim embedder fails fast.
