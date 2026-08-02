@@ -1,0 +1,19 @@
+AGENTS.md
+  s_a5436ec4520e75::t_4b00a5d5fafc7c 122
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "13aa6e336b7619a2e1647901386d4e6f3521ecda",
+  "prompts": {},
+  "sessions": {
+    "s_a5436ec4520e75": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_041625328ffei4ocJm3wiWpwZc",
+        "model": "glm-5.2"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
