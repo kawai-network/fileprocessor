@@ -1,0 +1,22 @@
+rag_searcher.go
+  s_37d5bed3565e6f::t_1533f2e1bfb1b4 26-32,55-60,66-67,89-93,98-103,109-113,181-188
+  s_37d5bed3565e6f::t_e41ecaeb06eaf0 189-190
+rag_searcher_test.go
+  s_37d5bed3565e6f::t_1533f2e1bfb1b4 33-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "3424a5ec63c76a99a6a0fc36b086ace3905f9665",
+  "prompts": {},
+  "sessions": {
+    "s_37d5bed3565e6f": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc248-c727-7923-9732-b8c7cf62da5f",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
