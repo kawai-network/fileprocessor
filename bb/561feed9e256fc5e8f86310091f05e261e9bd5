@@ -1,0 +1,28 @@
+rag_searcher.go
+  s_8d8a0c4edc5d36::t_e7d09a3b7096a3 174-178
+  s_8d8a0c4edc5d36::t_ac37951c36f2cc 8-9,70,119,146,157,159,162-173,245
+go.mod
+  s_8d8a0c4edc5d36::t_ac37951c36f2cc 6
+  s_8d8a0c4edc5d36::t_d16a20cbeccc52 12,18-23,26,28,33-35,37-38,40-42,46,48,50-53
+ragcore.go
+  s_8d8a0c4edc5d36::t_ac37951c36f2cc 23,173-210
+  s_8d8a0c4edc5d36::t_96be67e2282f19 21-22,24-25
+go.sum
+  s_8d8a0c4edc5d36::t_bc54dbe5e9bb91 1-20,27-28,31-39,42-47,50,59-64,67-68,78-81,84-91,94-100,103-105,113-114,118-123,125-128,133-136,139-140,147-155,158-159,162-165,168-169,176-178,183-184,191-193,198-209,216-219,222-225
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "bb561feed9e256fc5e8f86310091f05e261e9bd5",
+  "prompts": {},
+  "sessions": {
+    "s_8d8a0c4edc5d36": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc277-c33a-7e42-b852-5c805422da9c",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
