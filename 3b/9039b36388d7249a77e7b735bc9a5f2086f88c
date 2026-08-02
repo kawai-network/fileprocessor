@@ -1,0 +1,41 @@
+rag_searcher.go
+  s_0e26a093714cd0::t_1e652f5110dafd 75-76,82-83,85-86
+  s_0e26a093714cd0::t_17e171eb71b192 6,10-15,84,152-195
+  s_0e26a093714cd0::t_0eaaab74b819b9 23,28-38,80-81,196
+  s_0e26a093714cd0::t_7249493b535273 197
+  s_0e26a093714cd0::t_40fc34b4fab858 141
+ragcore.go
+  s_0e26a093714cd0::t_17e171eb71b192 49-54,57-58
+  s_0e26a093714cd0::t_0eaaab74b819b9 55-56
+  s_0e26a093714cd0::t_34bd76ced4da66 159-164,178
+public_embeddings_store.go
+  s_0e26a093714cd0::t_17e171eb71b192 265-270,275,278,280,305-342
+  s_0e26a093714cd0::t_e07527faf69bad 343-345
+go.mod
+  s_0e26a093714cd0::t_adcecadfef72cf 17,23-24,26,32,36-39
+rag_searcher_test.go
+  s_0e26a093714cd0::t_a7c9239d3cb313 1-32
+sqlite_keyword_index.go
+  s_0e26a093714cd0::t_2086824eb3fd81 43-45
+  s_0e26a093714cd0::t_43ddb4749f5fcb 1-42,46-202
+sqlite_keyword_index_test.go
+  s_0e26a093714cd0::t_e698e3e4134725 1-53
+go.sum
+  s_0e26a093714cd0::t_f9a58b49ffd48e 5-6,32-35,41-42,70,73-74,89-96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.20",
+  "base_commit_sha": "3b9039b36388d7249a77e7b735bc9a5f2086f88c",
+  "prompts": {},
+  "sessions": {
+    "s_0e26a093714cd0": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019fc216-368a-79e1-8a34-03a8c16424c6",
+        "model": "gpt-5.6-luna"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
