@@ -1,0 +1,19 @@
+go.mod
+  s_42244598adb527::t_97baf17e415689 13-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.19",
+  "base_commit_sha": "4de5ab682e33007e9df4d0fb53084296da2a6456",
+  "prompts": {},
+  "sessions": {
+    "s_42244598adb527": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_03fa918f5ffeU0H5Vo3FbYjDtX",
+        "model": "mimo-v2.5-free"
+      },
+      "human_author": "yudaprama <yudhaprama@icloud.com>"
+    }
+  }
+}
