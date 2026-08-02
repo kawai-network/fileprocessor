@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 const (
@@ -65,7 +67,7 @@ type SearchParamsSearcher struct {
 //
 // The store-side limit is max(5*Limit, 50) to absorb threshold and
 // hydration-time filtering before the final limit is applied.
-func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) ([]SearchResult, error) {
+func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) ([]*schema.Document, error) {
 	if strings.TrimSpace(p.Query) == "" {
 		return nil, fmt.Errorf("ragcore: search query cannot be empty")
 	}
@@ -114,7 +116,7 @@ func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) (
 		matches = fuseRRF(matches, keywordMatches, limit*2)
 	}
 	if len(matches) == 0 {
-		return []SearchResult{}, nil
+		return []*schema.Document{}, nil
 	}
 
 	ids := make([]string, len(matches))
@@ -141,7 +143,7 @@ func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) (
 		return false
 	}
 
-	results := make([]SearchResult, 0, len(chunks))
+	results := make([]*schema.Document, 0, len(chunks))
 	for _, ch := range chunks {
 		if !want(ch.FileID) {
 			continue
@@ -152,24 +154,28 @@ func (s *Searcher) SemanticSearch(ctx context.Context, p SearchParamsSearcher) (
 				fileName = f.Name
 			}
 		}
-		meta := map[string]string{}
+		meta := map[string]any{}
 		if ch.Metadata != "" {
-			meta["raw"] = ch.Metadata
+			meta[DocumentMetaRaw] = ch.Metadata
 		}
 		if ch.FileID != "" {
-			meta["fileId"] = ch.FileID
+			meta[DocumentMetaFileID] = ch.FileID
 		}
-		results = append(results, SearchResult{
-			ID:         ch.ID,
-			Similarity: sim[ch.ID],
-			Text:       ch.Text,
-			FileID:     ch.FileID,
-			FileName:   fileName,
-			Type:       ch.Type,
-			Index:      int(ch.Index),
-			ParentID:   ch.ParentID,
-			Metadata:   meta,
-		})
+		if fileName != "" {
+			meta[DocumentMetaFileName] = fileName
+		}
+		if ch.Type != "" {
+			meta[DocumentMetaType] = ch.Type
+		}
+		meta[DocumentMetaIndex] = int(ch.Index)
+		if ch.ParentID != "" {
+			meta[DocumentMetaParentID] = ch.ParentID
+		}
+		results = append(results, (&schema.Document{
+			ID:       ch.ID,
+			Content:  ch.Text,
+			MetaData: meta,
+		}).WithScore(sim[ch.ID]))
 		if len(results) >= limit {
 			break
 		}
@@ -236,6 +242,6 @@ func fuseRRF(vectorMatches, keywordMatches []VectorMatch, limit int) []VectorMat
 
 // SemanticSearchMultipleFiles is a convenience wrapper for callers that prefer
 // separate arguments over a search-params struct.
-func (s *Searcher) SemanticSearchMultipleFiles(ctx context.Context, query string, fileIDs []string, limit int) ([]SearchResult, error) {
+func (s *Searcher) SemanticSearchMultipleFiles(ctx context.Context, query string, fileIDs []string, limit int) ([]*schema.Document, error) {
 	return s.SemanticSearch(ctx, SearchParamsSearcher{Query: query, FileIDs: fileIDs, Limit: limit})
 }

@@ -18,7 +18,11 @@
 //	})
 package fileprocessor
 
-import "context"
+import (
+	"context"
+
+	"github.com/cloudwego/eino/schema"
+)
 
 // DistanceMetric is the distance function used by a VectorStore for similarity
 // scoring. The exact mapping is implementation-defined.
@@ -166,17 +170,44 @@ type Chunk struct {
 	Metadata string
 }
 
-// SearchResult is a hydrated semantic search hit, ready for use as LLM context.
-type SearchResult struct {
-	ID         string
-	Similarity float64
-	Text       string
-	FileID     string
-	FileName   string
-	Type       string
-	Index      int
-	ParentID   string // UUID of the parent chunk, empty if none
-	Metadata   map[string]string
+// Document metadata keys populated by Searcher.SemanticSearch.
+//
+// The document content, identity, and score use schema.Document's canonical
+// fields. These keys preserve retrieval-specific provenance without requiring
+// a second result type.
+const (
+	DocumentMetaFileID   = "fileprocessor.file_id"
+	DocumentMetaFileName = "fileprocessor.file_name"
+	DocumentMetaType     = "fileprocessor.type"
+	DocumentMetaIndex    = "fileprocessor.index"
+	DocumentMetaParentID = "fileprocessor.parent_id"
+	DocumentMetaRaw      = "fileprocessor.raw_metadata"
+)
+
+// DocumentStringMetadata returns a string metadata value, or an empty string
+// when the key is absent or contains a different type.
+func DocumentStringMetadata(doc *schema.Document, key string) string {
+	if doc == nil || doc.MetaData == nil {
+		return ""
+	}
+	v, ok := doc.MetaData[key].(string)
+	if !ok {
+		return ""
+	}
+	return v
+}
+
+// DocumentIntMetadata returns an int metadata value, or zero when the key is
+// absent or contains a different type.
+func DocumentIntMetadata(doc *schema.Document, key string) int {
+	if doc == nil || doc.MetaData == nil {
+		return 0
+	}
+	v, ok := doc.MetaData[key].(int)
+	if !ok {
+		return 0
+	}
+	return v
 }
 
 // BatchSearchRequest is a single query inside a [VectorStore.BatchSearch] call.
