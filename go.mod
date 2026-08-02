@@ -7,7 +7,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/kawai-network/x v1.0.47
 	github.com/pgvector/pgvector-go v0.4.0
-	github.com/yudaprama/tools v0.2.1
+	github.com/yudaprama/tools v0.2.2
 )
 
 require (
@@ -28,5 +28,3 @@ require (
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace github.com/yudaprama/tools => ../tools
