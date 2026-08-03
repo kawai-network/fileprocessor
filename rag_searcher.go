@@ -63,7 +63,9 @@ type SearchParamsSearcher struct {
 }
 
 // SemanticSearch embeds the query, fetches top-K+overshoot from the VectorStore,
-// hydrates chunk text from the ChunkStore, and applies fileID filters.
+// hydrates chunks into Eino schema.Documents, and applies fileID filters.
+// Retrieval similarity is stored with Document.WithScore; file/chunk
+// provenance is stored in Document.MetaData under the DocumentMeta* keys.
 //
 // The store-side limit is max(5*Limit, 50) to absorb threshold and
 // hydration-time filtering before the final limit is applied.

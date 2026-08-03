@@ -82,8 +82,17 @@ func main() {
         Query: "project timeline",
         Limit: 10,
     })
+    for _, doc := range results {
+        log.Printf("id=%s score=%.3f content=%s", doc.ID, doc.Score(), doc.Content)
+    }
 }
 ```
+
+`SemanticSearch` returns Eino `*schema.Document` values. The document ID and
+content use `schema.Document.ID` and `schema.Document.Content`; the retrieval
+score is available through `doc.Score()`. File/chunk provenance is preserved in
+`doc.MetaData` using the exported `DocumentMeta*` keys (for example,
+`DocumentMetaFileID`, `DocumentMetaFileName`, and `DocumentMetaParentID`).
 
 ## Implementing `FileStore`
 

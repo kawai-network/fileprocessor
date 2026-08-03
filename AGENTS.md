@@ -53,7 +53,7 @@ Notes:
 | `fs.go` | Hookable helpers (`timeNow`, `statFile`, `baseName`, `mkdirAll`, `copyFile`) for testability. |
 | `storage.go` | SHA-256 hashing, `CopyToStorage`, `SafeDelete` (only deletes if path is under `baseDir`). |
 | `mdsplitter.go` | Markdown header splitter used by the built-in `RAGChunker`. |
-| `ragcore.go` | Public RAG types: `VectorMatch`, `VectorItem`, `SearchParams`, `Embedder`, `ChunkStore`, `DistanceMetric`, `SearchResult`, `BatchSearchRequest`, `BatchSearchResult`. |
+| `ragcore.go` | Public RAG types: `VectorMatch`, `VectorItem`, `SearchParams`, `Embedder`, `ChunkStore`, `DistanceMetric`, Eino `schema.Document` metadata keys, `BatchSearchRequest`, `BatchSearchResult`. |
 | `rag_processor.go` | `RAGProcessor` — chunk → embed → persist chunk text + vector → update file stats. |
 | `rag_chunker.go` | `RAGChunker` — built-in chunker that routes by file type (PDF page-merge, markdown header split, recursive fallback). |
 | `rag_cache.go` | `EmbeddingCache` — in-memory SHA256-keyed LRU+TTL wrapping any `Embedder`. |
@@ -81,12 +81,17 @@ Processor.ProcessFile(req)
 ```
 
 ```
-Searcher.SemanticSearch(query)
+Searcher.SemanticSearch(query) → []*schema.Document
   ├─ embedder.Embed(query)
   ├─ store.Search(2×limit)                  (PgVectorStore, returns VectorMatch[])
   ├─ chunks.GetChunksByIDs(ids)             (ChunkStore interface)
-  └─ filter by FileIDs (if provided), then truncate to limit
+  └─ filter by FileIDs (if provided), hydrate schema.Document, then truncate to limit
 ```
+
+Search results use Eino's `schema.Document` as the canonical document type.
+`Document.ID` and `Document.Content` hold the chunk identity and text,
+`Document.Score()` holds the retrieval similarity, and file/chunk provenance
+is stored in `Document.MetaData` under the exported `DocumentMeta*` keys.
 
 `DeleteFile` always: `GetFile` → `RAGProcessor.DeleteFileVectors` → `FileStore.DeleteFile` → `SafeDelete` (if `FileBaseDir` configured).
 
