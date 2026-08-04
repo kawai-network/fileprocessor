@@ -78,11 +78,11 @@ func (r *RAGProcessor) ProcessFile(ctx context.Context, req RAGProcessRequest) (
 		return []string{}, nil
 	}
 
-	pages := r.parsePages(doc.Pages)
+	pages := r.parsePages(DocumentPages(doc))
 
 	fileDoc := &FileDocument{
 		Content:  doc.Content,
-		FileType: doc.FileType,
+		FileType: DocumentFileType(doc),
 		Filename: req.Filename,
 		Pages:    pages,
 	}

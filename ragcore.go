@@ -103,7 +103,9 @@ type Embedder interface {
 // metadata. Concrete adapters (e.g. SQLite, Postgres) live in the host app.
 type ChunkStore interface {
 	// GetDocument fetches a parsed document by ID. Returns ErrNotFound if absent.
-	GetDocument(ctx context.Context, id string) (Document, error)
+	// The returned *schema.Document uses MetaData keys DocumentMetaFileType and
+	// DocumentPages for file type and page data respectively.
+	GetDocument(ctx context.Context, id string) (*schema.Document, error)
 	// CreateChunk inserts a new chunk row and returns its ID.
 	CreateChunk(ctx context.Context, p CreateChunkParams) (string, error)
 	// GetChunksByIDs returns chunks in the same order as the IDs. The chunk
@@ -148,14 +150,24 @@ type RAGFile struct {
 	Name string
 }
 
-// Document represents a parsed source document.
-type Document struct {
-	ID       string
-	Content  string
-	FileType string
-	// Pages is a JSON-encoded list of pages. Empty string means pages are not
-	// available; consumers must fall back to text chunking.
-	Pages string
+// DocumentMetaFileType is the metadata key for the document's file type extension.
+const DocumentMetaFileType = "fileprocessor.file_type"
+
+// DocumentMetaPages is the metadata key for the JSON-encoded page list.
+// Empty string means pages are not available; consumers must fall back to
+// text chunking.
+const DocumentMetaPages = "fileprocessor.pages"
+
+// DocumentFileType returns the file type extension from a schema.Document's
+// MetaData, or an empty string when absent.
+func DocumentFileType(doc *schema.Document) string {
+	return DocumentStringMetadata(doc, DocumentMetaFileType)
+}
+
+// DocumentPages returns the JSON-encoded page list from a schema.Document's
+// MetaData, or an empty string when absent.
+func DocumentPages(doc *schema.Document) string {
+	return DocumentStringMetadata(doc, DocumentMetaPages)
 }
 
 // Chunk is a single stored chunk.

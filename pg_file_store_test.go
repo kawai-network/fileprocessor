@@ -167,7 +167,7 @@ func TestPgFileStoreCreateAndReadDocument(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetDocumentByFileID: %v", err)
 	}
-	if doc.Content != "hello world" || doc.Title != "x.txt" {
+	if doc.Content != "hello world" || DocumentTitle(doc) != "x.txt" {
 		t.Errorf("doc = %+v", doc)
 	}
 }

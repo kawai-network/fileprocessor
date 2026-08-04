@@ -3,6 +3,8 @@ package fileprocessor
 import (
 	"context"
 	"time"
+
+	"github.com/cloudwego/eino/schema"
 )
 
 // FileRecord is the immutable metadata about an uploaded file. The library
@@ -87,13 +89,21 @@ type ChunkStats struct {
 	EmbeddingStatus string // e.g. "success", "empty", "skipped"
 }
 
-// StoredDocument is the minimal view of a document fetched back from the
-// store, used when appending async-generated content (e.g. image descriptions).
-type StoredDocument struct {
-	ID      string
-	FileID  string
-	Title   string
-	Content string
+// Metadata keys for the minimal document view returned by
+// [FileStore.GetDocumentByFileID]. These live in schema.Document.MetaData so
+// callers can use the standard eino document type across the pipeline.
+//
+// DocumentMetaFileID is shared with the search metadata keys in ragcore.go.
+const DocumentMetaTitle = "fileprocessor.title"
+
+// DocumentFileID returns the file ID from a schema.Document's MetaData.
+func DocumentFileID(doc *schema.Document) string {
+	return DocumentStringMetadata(doc, DocumentMetaFileID)
+}
+
+// DocumentTitle returns the title from a schema.Document's MetaData.
+func DocumentTitle(doc *schema.Document) string {
+	return DocumentStringMetadata(doc, DocumentMetaTitle)
 }
 
 // StoredFile is the minimal view of a file fetched back from the store.
@@ -124,7 +134,9 @@ type FileStore interface {
 
 	// GetDocumentByFileID fetches the document linked to a file. Must return
 	// an error wrapping [ErrNotFound] when no document exists.
-	GetDocumentByFileID(ctx context.Context, fileID string) (StoredDocument, error)
+	// The returned *schema.Document uses MetaData keys DocumentMetaFileID and
+	// DocumentTitle for file linkage and title.
+	GetDocumentByFileID(ctx context.Context, fileID string) (*schema.Document, error)
 
 	// AppendToDocument appends content to the document identified by fileID.
 	// Used for async operations such as image-description generation.

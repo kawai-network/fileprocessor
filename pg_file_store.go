@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cloudwego/eino/schema"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -210,19 +211,31 @@ func (s *PostgresFileStore) CreateDocument(ctx context.Context, rec DocumentReco
 	return id, nil
 }
 
-func (s *PostgresFileStore) GetDocumentByFileID(ctx context.Context, fileID string) (StoredDocument, error) {
+func (s *PostgresFileStore) GetDocumentByFileID(ctx context.Context, fileID string) (*schema.Document, error) {
 	q := `SELECT id, COALESCE(file_id, ''), COALESCE(title, ''), COALESCE(content, '')
 		  FROM documents WHERE file_id = $1 LIMIT 1`
-	var doc StoredDocument
+	var (
+		id      string
+		docID   string
+		title   string
+		content string
+	)
 	if err := s.pool.QueryRow(ctx, q, fileID).Scan(
-		&doc.ID, &doc.FileID, &doc.Title, &doc.Content,
+		&id, &docID, &title, &content,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return StoredDocument{}, fmt.Errorf("%w: document for file_id=%s", ErrNotFound, fileID)
+			return nil, fmt.Errorf("%w: document for file_id=%s", ErrNotFound, fileID)
 		}
-		return StoredDocument{}, fmt.Errorf("pg_file_store: GetDocumentByFileID: %w", err)
+		return nil, fmt.Errorf("pg_file_store: GetDocumentByFileID: %w", err)
 	}
-	return doc, nil
+	return &schema.Document{
+		ID:      id,
+		Content: content,
+		MetaData: map[string]any{
+			DocumentMetaFileID: docID,
+			DocumentMetaTitle:  title,
+		},
+	}, nil
 }
 
 func (s *PostgresFileStore) AppendToDocument(ctx context.Context, fileID, additionalContent string) error {
@@ -358,19 +371,31 @@ func (s *PostgresFileStore) DeleteFile(ctx context.Context, fileID string) error
 // ============================================================================
 
 // GetDocument fetches a parsed document by ID.
-func (c *PostgresChunkStore) GetDocument(ctx context.Context, id string) (Document, error) {
+func (c *PostgresChunkStore) GetDocument(ctx context.Context, id string) (*schema.Document, error) {
 	q := `SELECT id, COALESCE(content, ''), COALESCE(file_type, ''), COALESCE(pages::text, '')
 		  FROM documents WHERE id = $1`
-	var doc Document
+	var (
+		docID    string
+		content  string
+		fileType string
+		pages    string
+	)
 	if err := c.store.pool.QueryRow(ctx, q, id).Scan(
-		&doc.ID, &doc.Content, &doc.FileType, &doc.Pages,
+		&docID, &content, &fileType, &pages,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return Document{}, fmt.Errorf("%w: document id=%s", ErrNotFound, id)
+			return nil, fmt.Errorf("%w: document id=%s", ErrNotFound, id)
 		}
-		return Document{}, fmt.Errorf("pg_file_store: GetDocument: %w", err)
+		return nil, fmt.Errorf("pg_file_store: GetDocument: %w", err)
 	}
-	return doc, nil
+	return &schema.Document{
+		ID:      docID,
+		Content: content,
+		MetaData: map[string]any{
+			DocumentMetaFileType: fileType,
+			DocumentMetaPages:    pages,
+		},
+	}, nil
 }
 
 // CreateChunk inserts a new chunk row and returns its ID.
