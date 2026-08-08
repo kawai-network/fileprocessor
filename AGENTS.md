@@ -53,11 +53,14 @@ Notes:
 | `fs.go` | Hookable helpers (`timeNow`, `statFile`, `baseName`, `mkdirAll`, `copyFile`) for testability. |
 | `storage.go` | SHA-256 hashing, `CopyToStorage`, `SafeDelete` (only deletes if path is under `baseDir`). |
 | `mdsplitter.go` | Markdown header splitter used by the built-in `RAGChunker`. |
-| `ragcore.go` | Public RAG types: `VectorMatch`, `VectorItem`, `SearchParams`, `Embedder`, `ChunkStore`, `DistanceMetric`, Eino `schema.Document` metadata keys, `BatchSearchRequest`, `BatchSearchResult`. |
+| `ragcore.go` | Public RAG types: `VectorMatch`, `VectorItem`, `SearchParams`, `Embedder`, `ChunkStore`, `DistanceMetric`, Eino `schema.Document` metadata keys, `BatchSearchRequest`, `BatchSearchResult`. **Also the `KeywordSearcher` interface (`:61`) — optional lexical search (BM25) implemented by stores that support it.** |
 | `rag_processor.go` | `RAGProcessor` — chunk → embed → persist chunk text + vector → update file stats. |
 | `rag_chunker.go` | `RAGChunker` — built-in chunker that routes by file type (PDF page-merge, markdown header split, recursive fallback). |
 | `rag_cache.go` | `EmbeddingCache` — in-memory SHA256-keyed LRU+TTL wrapping any `Embedder`. |
-| `rag_searcher.go` | `Searcher` — embed query → vector search → chunk hydration → fileID filter. |
+| `rag_searcher.go` | **Legacy** `Searcher` — embed query → vector search (+ optional keyword) → chunk hydration → fileID filter. Predates the Eino `Retriever`. The production knowledge service uses `Retriever` (`eino_retriever.go`), not `Searcher`. Don't wire new behavior here. Holds the hybrid constants (`defaultVectorWeight 0.7`, `defaultKeywordWeight 0.3`, `defaultRRFK 60`, thresholds `:28-33`). |
+| `eino_retriever.go` | **Production** hybrid `Retriever` — implements Eino's `retriever.Retriever`. Fans out to vector + keyword sub-retrievers, fuses with weighted RRF, expands parent context. `NewRetriever` (`:56`), `Retrieve` (`:179`). Impl-specific options: `WithFileIDs`, `WithVectorThreshold`, `WithKeywordThreshold`, `WithMetric`, `WithExpandParent`. |
+| `eino_retriever_router.go` | The sub-retrievers + fusion: `vectorRetriever`, `keywordRetriever`, `WeightedRRFFusion`. |
+| `sqlite_keyword_index.go` | `SQLiteKeywordIndex` — local SQLite FTS5 BM25 projection, periodically rebuilt from Postgres. One of two `KeywordSearcher` impls (see gotchas). |
 | `pgvector_store.go` | `PgVectorStore` — pgvector + HNSW vector store. Schema isolation (lives in `fileprocessor` schema), batch search via LATERAL, `SetEfSearch`/`ResetEfSearch`, `GetIndexStats`. |
 | `public_embeddings_store.go` | `PublicEmbeddingsStore` — `PgVectorStore` lookalike that targets `public.embeddings` (the lobehub table). Pinned to dim=1024 (the schema's hard constraint). Hydrates `file_id` via a join to `public.file_chunks`. Use it when your embedder produces 1024-dim vectors and you want to share storage with the host app's existing RAG. |
 | `pg_file_store.go` | `PostgresFileStore` (+ `PostgresChunkStore` adapter) — durable storage against the lobehub `public` schema (files/documents/chunks/file_chunks/document_chunks). One struct, two interfaces. |
@@ -94,6 +97,37 @@ Search results use Eino's `schema.Document` as the canonical document type.
 is stored in `Document.MetaData` under the exported `DocumentMeta*` keys.
 
 `DeleteFile` always: `GetFile` → `RAGProcessor.DeleteFileVectors` → `FileStore.DeleteFile` → `SafeDelete` (if `FileBaseDir` configured).
+
+## Hybrid retrieval (the production path)
+
+The `Searcher` flow above is the **legacy** path. Production knowledge search
+uses the Eino `Retriever` (`eino_retriever.go`), which runs **hybrid** retrieval:
+
+```
+Retriever.Retrieve(query, opts...)                         (eino_retriever.go:179)
+  ├── simpleRouterRetriever fans out concurrently:
+  │     ├── vectorRetriever   → Embed(query) → store.Search (HNSW)          → threshold(0.15) → hydrate
+  │     └── keywordRetriever  → KeywordSearcher.KeywordSearch (BM25)         → threshold(0.3)  → hydrate   (only if a KeywordSearcher is wired)
+  ├── WeightedRRFFusion       (vector 0.7, keyword 0.3, K=60)               (eino_retriever_router.go:212)
+  └── expandParentContext     → prepend parent chunk text to each doc         (eino_retriever.go:276)
+```
+
+- **Two ways to supply keyword search:** (a) pass a `KeywordSearcher` explicitly
+  via `RetrieverConfig.Keyword`, or (b) the store itself implements
+  `KeywordSearcher` and is auto-detected (`eino_retriever.go:80`). Explicit wins.
+  When neither is present, the retriever is vector-only.
+- **Two `KeywordSearcher` implementations exist:**
+  - `PublicEmbeddingsStore.KeywordSearch` (`public_embeddings_store.go:307`) —
+    Postgres FTS (`ts_rank_cd` over `chunks.fts_vector`, a STORED generated
+    column — migration `20260802000001`, always in sync with `text`). **Used by
+    the knowledge `Service` in production** (auto-detected by `NewRetriever`).
+  - `SQLiteKeywordIndex` (`sqlite_keyword_index.go`) — local FTS5 BM25, rebuilt
+    from PG periodically. Library code only; the knowledge `Service` no longer
+    wires it (architecture review R2).
+- RRF fuses by **rank**, not raw score, because cosine similarity and BM25 are
+  not on the same scale.
+- Candidate oversampling: store-side limit is `max(5×TopK, 50)` to absorb
+  threshold filtering before the final limit.
 
 ## Key interfaces the host app must implement
 
@@ -156,6 +190,7 @@ Optional interfaces: `VLProvider` (image description), `LanguageModel` (OCR clea
 - **`file_id` is hydrated via JOIN to `public.file_chunks`** in `Search` results. Chunks not linked to any file return an empty `file_id`.
 - **Deletes cascade from `chunks`**: `embeddings.chunk_id` FKs to `chunks.id` with `ON DELETE CASCADE`. When `PostgresFileStore.DeleteFile` removes the chunks, the embeddings go with them. The store's own `DeleteByID`/`DeleteByFileID` are explicit deletes (faster, don't depend on FK cascade timing).
 - **HNSW index name is `public_embeddings_hnsw_idx`**: created on `init` if missing, with `vector_cosine_ops` by default. Reuses the index across process restarts.
+- **PG FTS keyword search (`KeywordSearch`, `:307`) is the live keyword path.** It queries `chunks.fts_vector @@ plainto_tsquery('simple', …)` + `ts_rank_cd`. `fts_vector` is a **STORED generated column** (`GENERATED ALWAYS AS to_tsvector('simple', coalesce(text,''))`, migration `20260802000001`) — always populated from `text`, no trigger/backfill needed. The knowledge `Service` does NOT pass an explicit `Keyword`, so `NewRetriever` auto-detects this implementation (architecture review R2).
 - **Rows written by this store have `model = 'fileprocessor'`**. The host app's own embeddings pipeline should use a different `model` value so the two can coexist.
 - **Empty `client_id`/`workspace_id` from the test user FKs** are wrapped in `NULLIF($N, '')` in the file-store SQL; the existing `files_client_id_user_id_unique` constraint treats two NULL client_ids as distinct, so multiple files per user work fine.
 
@@ -235,5 +270,6 @@ results, _ := searcher.SemanticSearch(ctx, fileprocessor.SearchParamsSearcher{
 - If you add a new file type, update the `textExtensions`/`imageExtensions`/`videoExtensions` maps in `loader.go`, the `loadContent` switch in `loader_text.go`, and the `ChunkDocument` switch in `rag_chunker.go`.
 - If you change `FileStore`/`ChunkStore`/`Embedder` interfaces, this is a breaking change for all downstream consumers.
 - If you add a new operator class or distance metric, update `metricOpsClass`, `metricDistanceOp`, and `distanceToSimilarityPg` together.
+- If you change fusion weights/thresholds (`defaultVectorWeight`/`defaultKeywordWeight`/`defaultRRFK` in `rag_searcher.go`) or RRF logic (`WeightedRRFFusion`), both the `Retriever` (production) and the legacy `Searcher` read the same constants — run the retrieval tests in `eino_retriever_test.go` (including `TestRetrieve_RegressionSuite`). Parent-context expansion is exported as `ExpandParentContext`; the knowledge tool runs it after per-file dedupe (architecture review B1, fixed).
 - If you add a new HNSW knob to `PgHNSWConfig`, also add it to `DefaultPgHNSWConfig` and `(*PgHNSWConfig).normalize()`.
 - If you change a lobehub table column, the matching `PostgresFileStore` SQL in `pg_file_store.go` likely needs an update too. Mirror any new column constraints with a `NULLIF($N, '')` wrap or equivalent when binding from Go.

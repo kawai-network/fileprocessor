@@ -33,15 +33,34 @@ import (
 type PublicEmbeddingsStore struct {
 	pool   *pgxpool.Pool
 	config *PgHNSWConfig
+	model  string
 }
 
 // Compile-time interface check.
 var _ VectorStore = (*PublicEmbeddingsStore)(nil)
 
-// modelTag is stamped into the embeddings.model column so callers can
-// distinguish rows written by the fileprocessor from rows written by
-// the host app's other pipelines.
-const modelTag = "fileprocessor"
+// defaultModelTag is stamped into the embeddings.model column when a caller
+// has not set a real model name via SetModel. It distinguishes rows written by
+// the fileprocessor store from rows written by the host app's other pipelines.
+const defaultModelTag = "fileprocessor"
+
+// modelTag returns the value written to embeddings.model. Callers that use this
+// store for writes should SetModel with the real embedding model name so the
+// column carries useful information (architecture review R4). Note: the kawai
+// production ingest path (egent-jobs) writes embeddings directly with the real
+// model and bypasses this store's write methods.
+func (s *PublicEmbeddingsStore) modelTag() string {
+	if s.model != "" {
+		return s.model
+	}
+	return defaultModelTag
+}
+
+// SetModel sets the value written to the embeddings.model column on subsequent
+// Upsert/UpsertBatch calls, so callers using this store for writes stamp the
+// real embedding model name rather than the generic "fileprocessor" default.
+// Reads (Search/KeywordSearch) are unaffected.
+func (s *PublicEmbeddingsStore) SetModel(model string) { s.model = model }
 
 // hnswIndexName is the dedicated HNSW index this store creates on
 // public.embeddings. Keep this name stable so the index is reused
@@ -53,8 +72,8 @@ const hnswIndexName = "public_embeddings_hnsw_idx"
 // (the schema's fixed vector dimension). Pass nil for cfg to use
 // default HNSW parameters.
 func NewPublicEmbeddingsStore(ctx context.Context, dsn string, dim int, cfg *PgHNSWConfig) (*PublicEmbeddingsStore, error) {
-	if dim != 1024 {
-		return nil, fmt.Errorf("public_embeddings_store: public.embeddings is pinned to vector(1024), got dim=%d", dim)
+	if dim != DefaultEmbeddingDim {
+		return nil, fmt.Errorf("public_embeddings_store: public.embeddings is pinned to vector(%d), got dim=%d", DefaultEmbeddingDim, dim)
 	}
 	pool, err := pgxpool.New(ctx, dsn)
 	if err != nil {
@@ -158,8 +177,8 @@ func (s *PublicEmbeddingsStore) verifyColumn(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("public_embeddings_store: parse embeddings type %q: %w", dataType, err)
 	}
-	if dim != 1024 {
-		return fmt.Errorf("public_embeddings_store: expected dim 1024, found dim %d", dim)
+	if dim != DefaultEmbeddingDim {
+		return fmt.Errorf("public_embeddings_store: expected dim %d, found dim %d", DefaultEmbeddingDim, dim)
 	}
 	return nil
 }
@@ -171,15 +190,15 @@ func (s *PublicEmbeddingsStore) verifyColumn(ctx context.Context) error {
 // fileID is accepted for interface compatibility but is not stored —
 // the relationship is recomputed via the file_chunks join on demand.
 func (s *PublicEmbeddingsStore) Upsert(ctx context.Context, id, fileID string, embedding []float32) error {
-	if len(embedding) != 1024 {
-		return fmt.Errorf("public_embeddings_store: embedding dim %d != 1024", len(embedding))
+	if len(embedding) != DefaultEmbeddingDim {
+		return fmt.Errorf("public_embeddings_store: embedding dim %d != %d", len(embedding), DefaultEmbeddingDim)
 	}
 	q := `INSERT INTO public.embeddings (chunk_id, embeddings, model)
 		  VALUES ($1, $2, $3)
 		  ON CONFLICT (chunk_id) DO UPDATE
 		  SET embeddings = EXCLUDED.embeddings,
 		      model = EXCLUDED.model`
-	if _, err := s.pool.Exec(ctx, q, id, pgvector.NewVector(embedding), modelTag); err != nil {
+	if _, err := s.pool.Exec(ctx, q, id, pgvector.NewVector(embedding), s.modelTag()); err != nil {
 		return fmt.Errorf("public_embeddings_store: upsert: %w", err)
 	}
 	return nil
@@ -193,8 +212,8 @@ func (s *PublicEmbeddingsStore) UpsertBatch(ctx context.Context, items []VectorI
 		return nil
 	}
 	for _, it := range items {
-		if len(it.Embedding) != 1024 {
-			return fmt.Errorf("public_embeddings_store: embedding dim %d != 1024", len(it.Embedding))
+		if len(it.Embedding) != DefaultEmbeddingDim {
+			return fmt.Errorf("public_embeddings_store: embedding dim %d != %d", len(it.Embedding), DefaultEmbeddingDim)
 		}
 	}
 
@@ -207,7 +226,7 @@ func (s *PublicEmbeddingsStore) UpsertBatch(ctx context.Context, items []VectorI
 	// Try COPY first.
 	rows := make([][]any, len(items))
 	for i, it := range items {
-		rows[i] = []any{it.ID, pgvector.NewVector(it.Embedding), modelTag}
+		rows[i] = []any{it.ID, pgvector.NewVector(it.Embedding), s.modelTag()}
 	}
 	_, copyErr := tx.CopyFrom(ctx,
 		pgx.Identifier{"public", "embeddings"},
@@ -235,7 +254,7 @@ func (s *PublicEmbeddingsStore) UpsertBatch(ctx context.Context, items []VectorI
 		  SET embeddings = EXCLUDED.embeddings,
 		      model = EXCLUDED.model`
 	for _, it := range items {
-		if _, err := tx.Exec(ctx, q, it.ID, pgvector.NewVector(it.Embedding), modelTag); err != nil {
+		if _, err := tx.Exec(ctx, q, it.ID, pgvector.NewVector(it.Embedding), s.modelTag()); err != nil {
 			return fmt.Errorf("public_embeddings_store: batch upsert id=%s: %w", it.ID, err)
 		}
 	}
@@ -248,8 +267,8 @@ func (s *PublicEmbeddingsStore) UpsertBatch(ctx context.Context, items []VectorI
 // Search returns the top-K most similar embeddings. file_id is
 // hydrated via a JOIN to public.file_chunks.
 func (s *PublicEmbeddingsStore) Search(ctx context.Context, embedding []float32, params SearchParams) ([]VectorMatch, error) {
-	if len(embedding) != 1024 {
-		return nil, fmt.Errorf("public_embeddings_store: embedding dim %d != 1024", len(embedding))
+	if len(embedding) != DefaultEmbeddingDim {
+		return nil, fmt.Errorf("public_embeddings_store: embedding dim %d != %d", len(embedding), DefaultEmbeddingDim)
 	}
 	metric := params.Metric
 	if metric == "" {
@@ -283,21 +302,9 @@ func (s *PublicEmbeddingsStore) Search(ctx context.Context, embedding []float32,
 	}
 	defer rows.Close()
 
-	out := make([]VectorMatch, 0, limit)
-	for rows.Next() {
-		var id, fileID string
-		var distance float64
-		if err := rows.Scan(&id, &fileID, &distance); err != nil {
-			return nil, fmt.Errorf("public_embeddings_store: scan search row: %w", err)
-		}
-		out = append(out, VectorMatch{
-			ID:         id,
-			FileID:     fileID,
-			Similarity: distanceToSimilarityPg(distance, metric),
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("public_embeddings_store: iterate search rows: %w", err)
+	out, err := collectSearchResults(rows, metric, limit)
+	if err != nil {
+		return nil, fmt.Errorf("public_embeddings_store: %w", err)
 	}
 	return out, nil
 }
@@ -373,8 +380,8 @@ func (s *PublicEmbeddingsStore) BatchSearch(ctx context.Context, queries []Batch
 		return nil, nil
 	}
 	for _, q := range queries {
-		if len(q.Embedding) != 1024 {
-			return nil, fmt.Errorf("public_embeddings_store: query dim %d != 1024", len(q.Embedding))
+		if len(q.Embedding) != DefaultEmbeddingDim {
+			return nil, fmt.Errorf("public_embeddings_store: query dim %d != %d", len(q.Embedding), DefaultEmbeddingDim)
 		}
 	}
 	if limit <= 0 {
@@ -412,21 +419,9 @@ func (s *PublicEmbeddingsStore) BatchSearch(ctx context.Context, queries []Batch
 	}
 	defer rows.Close()
 
-	byID := make(map[string][]VectorMatch, len(queries))
-	for rows.Next() {
-		var qid, id, fileID string
-		var distance float64
-		if err := rows.Scan(&qid, &id, &fileID, &distance); err != nil {
-			return nil, fmt.Errorf("public_embeddings_store: scan batch row: %w", err)
-		}
-		byID[qid] = append(byID[qid], VectorMatch{
-			ID:         id,
-			FileID:     fileID,
-			Similarity: distanceToSimilarityPg(distance, s.config.Metric),
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("public_embeddings_store: iterate batch rows: %w", err)
+	byID, err := collectBatchResults(rows, s.config.Metric)
+	if err != nil {
+		return nil, fmt.Errorf("public_embeddings_store: %w", err)
 	}
 
 	out := make([]BatchSearchResult, 0, len(queries))

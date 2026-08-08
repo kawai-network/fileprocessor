@@ -410,3 +410,157 @@ func TestExpandParentContext_NilChunks(t *testing.T) {
 		t.Fatalf("content should be unchanged, got %q", expanded[0].Content)
 	}
 }
+
+// --- T2: retrieval regression suite -----------------------------------------
+//
+// A frozen corpus + scripted per-query vector/keyword signals, asserting
+// recall@K. This is DB-free and runs on every change to fileprocessor. It
+// breaks if fusion weights (RRF), thresholds, or stream-combination behavior
+// drift. See knowledge-base-architecture-review.md (T2).
+
+// scriptedVectorStore keys canned vector hits by embedding[0], so the test can
+// route a distinct result set per query when paired with scriptedEmbedder.
+type scriptedVectorStore struct {
+	byKey map[float32][]VectorMatch
+}
+
+func (s *scriptedVectorStore) Upsert(context.Context, string, string, []float32) error  { return nil }
+func (s *scriptedVectorStore) UpsertBatch(context.Context, []VectorItem) error          { return nil }
+func (s *scriptedVectorStore) DeleteByID(context.Context, string) error                 { return nil }
+func (s *scriptedVectorStore) DeleteByFileID(context.Context, string) error             { return nil }
+func (s *scriptedVectorStore) Close() error                                             { return nil }
+func (s *scriptedVectorStore) Search(_ context.Context, emb []float32, _ SearchParams) ([]VectorMatch, error) {
+	if len(emb) == 0 {
+		return nil, nil
+	}
+	return s.byKey[emb[0]], nil
+}
+
+type scriptedKeywordSearcher struct{ byQuery map[string][]VectorMatch }
+
+func (s *scriptedKeywordSearcher) KeywordSearch(_ context.Context, q string, _ SearchParams) ([]VectorMatch, error) {
+	return s.byQuery[q], nil
+}
+
+// scriptedEmbedder maps each query string to a single-element vector whose
+// value is the routing key consumed by scriptedVectorStore.
+type scriptedEmbedder struct{ byQuery map[string]float32 }
+
+func (e *scriptedEmbedder) Embed(_ context.Context, texts []string) ([][]float32, error) {
+	out := make([][]float32, len(texts))
+	for i, q := range texts {
+		out[i] = []float32{e.byQuery[q]}
+	}
+	return out, nil
+}
+func (e *scriptedEmbedder) Dimension() int { return 1 }
+
+// frozen corpus chunks for the regression suite.
+var regressionChunks = map[string]Chunk{
+	"deploy":   {ID: "deploy", Text: "how to deploy the application", FileID: "f1"},
+	"dbpool":   {ID: "dbpool", Text: "database connection pooling config", FileID: "f1"},
+	"k8s":      {ID: "k8s", Text: "kubernetes deployment guide", FileID: "f2"},
+	"auth":     {ID: "auth", Text: "authentication and authorization flows", FileID: "f2"},
+	"ciscript": {ID: "ciscript", Text: "ci cd pipeline deploy step", FileID: "f1"},
+}
+
+func containsAll(returnedIDs, expected []string) bool {
+	have := make(map[string]bool, len(returnedIDs))
+	for _, id := range returnedIDs {
+		have[id] = true
+	}
+	for _, id := range expected {
+		if !have[id] {
+			return false
+		}
+	}
+	return true
+}
+
+func TestRetrieve_RegressionSuite(t *testing.T) {
+	type tc struct {
+		name        string
+		query       string
+		vectorHits  []VectorMatch
+		keywordHits []VectorMatch
+		expected    []string // relevant chunk IDs that must appear (recall@K)
+	}
+	cases := []tc{
+		{
+			name:        "semantic-only chunk survives fusion",
+			query:       "how to deploy",
+			vectorHits:  []VectorMatch{{ID: "deploy", FileID: "f1", Similarity: 0.9}, {ID: "k8s", FileID: "f2", Similarity: 0.8}},
+			keywordHits: nil,
+			expected:    []string{"deploy", "k8s"},
+		},
+		{
+			name:        "keyword-only chunk survives fusion (core hybrid value)",
+			query:       "authn authz",
+			vectorHits:  []VectorMatch{{ID: "deploy", FileID: "f1", Similarity: 0.9}},
+			keywordHits: []VectorMatch{{ID: "auth", FileID: "f2", Similarity: 0.9}},
+			expected:    []string{"deploy", "auth"},
+		},
+		{
+			name:        "RRF agreement: chunk in both streams ranks first",
+			query:       "pipeline deploy",
+			vectorHits:  []VectorMatch{{ID: "deploy", FileID: "f1", Similarity: 0.6}, {ID: "ciscript", FileID: "f1", Similarity: 0.9}},
+			keywordHits: []VectorMatch{{ID: "ciscript", FileID: "f1", Similarity: 0.4}, {ID: "k8s", FileID: "f2", Similarity: 0.9}},
+			expected:    []string{"ciscript", "deploy", "k8s"},
+		},
+		{
+			name:        "vector threshold (0.15) drops low-similarity hit",
+			query:       "db setup",
+			vectorHits:  []VectorMatch{{ID: "dbpool", FileID: "f1", Similarity: 0.9}, {ID: "auth", FileID: "f2", Similarity: 0.1}},
+			keywordHits: nil,
+			expected:    []string{"dbpool"}, // auth filtered out (0.1 < 0.15)
+		},
+		{
+			name:        "keyword threshold (0.3) drops low-score hit",
+			query:       "connection pool",
+			vectorHits:  nil,
+			keywordHits: []VectorMatch{{ID: "dbpool", FileID: "f1", Similarity: 0.9}, {ID: "auth", FileID: "f2", Similarity: 0.1}},
+			expected:    []string{"dbpool"}, // auth filtered out (0.1 < 0.3)
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			key := float32(1)
+			emb := &scriptedEmbedder{byQuery: map[string]float32{c.query: key}}
+			store := &scriptedVectorStore{byKey: map[float32][]VectorMatch{key: c.vectorHits}}
+			kw := &scriptedKeywordSearcher{byQuery: map[string][]VectorMatch{c.query: c.keywordHits}}
+			chunks := &fakeChunkStore{chunks: regressionChunks}
+
+			r, err := NewRetriever(context.Background(), &RetrieverConfig{
+				Store:    store,
+				Chunks:   chunks,
+				Embedder: emb,
+				Keyword:  kw,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			docs, err := r.Retrieve(context.Background(), c.query, retriever.WithTopK(10))
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			ids := make([]string, 0, len(docs))
+			for _, d := range docs {
+				ids = append(ids, d.ID)
+			}
+			if !containsAll(ids, c.expected) {
+				t.Errorf("recall@K failed: expected %v ⊆ returned %v", c.expected, ids)
+			}
+
+			// For the RRF-agreement case, assert the dual-stream chunk ranks #1.
+			if c.name != "" && len(c.keywordHits) > 0 && c.vectorHits != nil {
+				// ciscript appears in both streams in that case.
+				if c.query == "pipeline deploy" && (len(ids) == 0 || ids[0] != "ciscript") {
+					t.Errorf("RRF: expected ciscript first (in both streams), got %v", ids)
+				}
+			}
+		})
+	}
+}

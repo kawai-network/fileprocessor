@@ -271,10 +271,14 @@ func WithExpandParent(v bool) retriever.Option {
 
 // --- parent context expansion ---
 
-// expandParentContext fetches parent chunks for results that have a
-// DocumentMetaParentID and prepends the parent text as context.
-func (ret *Retriever) expandParentContext(ctx context.Context, results []*schema.Document) []*schema.Document {
-	if ret.chunks == nil || len(results) == 0 {
+// ExpandParentContext fetches parent chunks for results that have a
+// DocumentMetaParentID and prepends the parent text as context. It is the
+// exported form of the expansion step so callers can run it as a
+// post-retrieval transformation (e.g. after deduplication) instead of inside
+// Retrieve. When chunks is nil or no result carries a parent id, results are
+// returned unchanged.
+func ExpandParentContext(ctx context.Context, chunks ChunkStore, results []*schema.Document) []*schema.Document {
+	if chunks == nil || len(results) == 0 {
 		return results
 	}
 
@@ -293,7 +297,7 @@ func (ret *Retriever) expandParentContext(ctx context.Context, results []*schema
 		ids = append(ids, id)
 	}
 
-	parents, err := ret.chunks.GetChunksByIDs(ctx, ids)
+	parents, err := chunks.GetChunksByIDs(ctx, ids)
 	if err != nil {
 		slog.Warn("kawai retriever: expand parent context failed", "error", err)
 		return results
@@ -314,6 +318,15 @@ func (ret *Retriever) expandParentContext(ctx context.Context, results []*schema
 		expanded = append(expanded, doc)
 	}
 	return expanded
+}
+
+// expandParentContext is the in-Retrieve path; it delegates to the exported
+// [ExpandParentContext] using the Retriever's own chunk store.
+func (ret *Retriever) expandParentContext(ctx context.Context, results []*schema.Document) []*schema.Document {
+	if ret.chunks == nil {
+		return results
+	}
+	return ExpandParentContext(ctx, ret.chunks, results)
 }
 
 var _ retriever.Retriever = (*Retriever)(nil)
