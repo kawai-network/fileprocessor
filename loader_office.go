@@ -8,7 +8,6 @@ import (
 	"github.com/yudaprama/tools/gooxml/document"
 	"github.com/yudaprama/tools/gooxml/presentation"
 	"github.com/yudaprama/tools/gooxml/spreadsheet"
-	"github.com/kawai-network/x/pdf/extractor"
 	"github.com/kawai-network/x/pdf/model"
 )
 
@@ -31,41 +30,7 @@ func (l *FileLoader) loadPDFFile(filePath string) ([]DocumentPage, string, error
 		return nil, "", fmt.Errorf("get number of pages: %w", err)
 	}
 
-	var pages []DocumentPage
-	var sb strings.Builder
-	sb.WriteString("# PDF Document\n\n")
-
-	for i := 1; i <= numPages; i++ {
-		page, err := reader.GetPage(i)
-		if err != nil {
-			return nil, "", fmt.Errorf("get page %d: %w", i, err)
-		}
-
-		ex, err := extractor.New(page)
-		if err != nil {
-			return nil, "", fmt.Errorf("create extractor for page %d: %w", i, err)
-		}
-
-		text, err := ex.ExtractText()
-		if err != nil {
-			return nil, "", fmt.Errorf("extract page %d: %w", i, err)
-		}
-		if strings.TrimSpace(text) == "" {
-			text = "[Unable to extract text from this page]"
-		}
-
-		lines := strings.Split(text, "\n")
-		pages = append(pages, DocumentPage{
-			CharCount:   len(text),
-			LineCount:   len(lines),
-			Metadata:    map[string]any{"pageNumber": i},
-			PageContent: text,
-		})
-
-		fmt.Fprintf(&sb, "## Page %d\n\n%s\n\n", i, text)
-	}
-
-	return pages, sb.String(), nil
+	return extractPDFPages(reader, numPages)
 }
 
 // --- DOCX ------------------------------------------------------------------

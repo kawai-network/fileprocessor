@@ -125,7 +125,13 @@ func loadPDFBytes(content []byte) ([]DocumentPage, string, error) {
 	if err != nil {
 		return nil, "", fmt.Errorf("get number of pages: %w", err)
 	}
+	return extractPDFPages(reader, numPages)
+}
 
+// extractPDFPages iterates over every page in a PDF reader, extracts text,
+// and returns the page metadata + aggregated markdown. Shared by both the
+// in-memory (LoadBytes) and file-based (loadPDFFile) paths.
+func extractPDFPages(reader *model.PdfReader, numPages int) ([]DocumentPage, string, error) {
 	var pages []DocumentPage
 	var sb strings.Builder
 	sb.WriteString("# PDF Document\n\n")

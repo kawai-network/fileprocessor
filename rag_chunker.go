@@ -113,14 +113,7 @@ func (c *RAGChunker) chunkPDFByPages(pages []DocumentPage, config ChunkingConfig
 		pageNum := i + 1
 
 		if current.Len() > 0 && current.Len()+page.CharCount > config.ChunkSize {
-			chunks = append(chunks, DocumentChunk{
-				ID:      fmt.Sprintf("chunk-%d", chunkID),
-				Content: current.String(),
-				Metadata: map[string]interface{}{
-					"type":  "pdf-pages",
-					"pages": currentPages,
-				},
-			})
+			chunks = append(chunks, makePDFChunk(chunkID, current.String(), currentPages))
 			chunkID++
 
 			current.Reset()
@@ -143,17 +136,22 @@ func (c *RAGChunker) chunkPDFByPages(pages []DocumentPage, config ChunkingConfig
 	}
 
 	if current.Len() > 0 {
-		chunks = append(chunks, DocumentChunk{
-			ID:      fmt.Sprintf("chunk-%d", chunkID),
-			Content: current.String(),
-			Metadata: map[string]interface{}{
-				"type":  "pdf-pages",
-				"pages": currentPages,
-			},
-		})
+		chunks = append(chunks, makePDFChunk(chunkID, current.String(), currentPages))
 	}
 
 	return chunks
+}
+
+// makePDFChunk creates a DocumentChunk for a PDF page range.
+func makePDFChunk(id int, content string, pages []int) DocumentChunk {
+	return DocumentChunk{
+		ID:      fmt.Sprintf("chunk-%d", id),
+		Content: content,
+		Metadata: map[string]interface{}{
+			"type":  "pdf-pages",
+			"pages": pages,
+		},
+	}
 }
 
 // chunkByRecursiveSplit splits content by progressively smaller separators.

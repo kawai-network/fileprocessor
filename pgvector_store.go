@@ -443,21 +443,9 @@ func (s *PgVectorStore) Search(ctx context.Context, embedding []float32, params 
 	}
 	defer rows.Close()
 
-	out := make([]VectorMatch, 0, limit)
-	for rows.Next() {
-		var id, fileID string
-		var distance float64
-		if err := rows.Scan(&id, &fileID, &distance); err != nil {
-			return nil, fmt.Errorf("pgvector: scan search row: %w", err)
-		}
-		out = append(out, VectorMatch{
-			ID:         id,
-			FileID:     fileID,
-			Similarity: distanceToSimilarityPg(distance, metric),
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("pgvector: iterate search rows: %w", err)
+	out, err := collectSearchResults(rows, metric, limit)
+	if err != nil {
+		return nil, fmt.Errorf("pgvector: %w", err)
 	}
 	return out, nil
 }
@@ -533,21 +521,9 @@ func (s *PgVectorStore) BatchSearch(ctx context.Context, queries []BatchSearchRe
 	}
 	defer rows.Close()
 
-	byID := make(map[string][]VectorMatch, len(queries))
-	for rows.Next() {
-		var qid, id, fileID string
-		var distance float64
-		if err := rows.Scan(&qid, &id, &fileID, &distance); err != nil {
-			return nil, fmt.Errorf("pgvector: scan batch row: %w", err)
-		}
-		byID[qid] = append(byID[qid], VectorMatch{
-			ID:         id,
-			FileID:     fileID,
-			Similarity: distanceToSimilarityPg(distance, s.config.Metric),
-		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("pgvector: iterate batch rows: %w", err)
+	byID, err := collectBatchResults(rows, s.config.Metric)
+	if err != nil {
+		return nil, fmt.Errorf("pgvector: %w", err)
 	}
 
 	out := make([]BatchSearchResult, 0, len(queries))
@@ -561,6 +537,50 @@ func (s *PgVectorStore) BatchSearch(ctx context.Context, queries []BatchSearchRe
 }
 
 // --- helpers ---------------------------------------------------------------
+
+// collectBatchResults scans batch search rows into a map of queryID → matches.
+// Shared by PgVectorStore and PublicEmbeddingsStore.
+func collectBatchResults(rows pgx.Rows, metric DistanceMetric) (map[string][]VectorMatch, error) {
+	byID := make(map[string][]VectorMatch)
+	for rows.Next() {
+		var qid, id, fileID string
+		var distance float64
+		if err := rows.Scan(&qid, &id, &fileID, &distance); err != nil {
+			return nil, fmt.Errorf("scan batch row: %w", err)
+		}
+		byID[qid] = append(byID[qid], VectorMatch{
+			ID:         id,
+			FileID:     fileID,
+			Similarity: distanceToSimilarityPg(distance, metric),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate batch rows: %w", err)
+	}
+	return byID, nil
+}
+
+// collectSearchResults scans single-query search rows into a slice.
+// Shared by PgVectorStore and PublicEmbeddingsStore.
+func collectSearchResults(rows pgx.Rows, metric DistanceMetric, limit int) ([]VectorMatch, error) {
+	out := make([]VectorMatch, 0, limit)
+	for rows.Next() {
+		var id, fileID string
+		var distance float64
+		if err := rows.Scan(&id, &fileID, &distance); err != nil {
+			return nil, fmt.Errorf("scan search row: %w", err)
+		}
+		out = append(out, VectorMatch{
+			ID:         id,
+			FileID:     fileID,
+			Similarity: distanceToSimilarityPg(distance, metric),
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate search rows: %w", err)
+	}
+	return out, nil
+}
 
 // metricOpsClass maps a DistanceMetric to the pgvector operator class used
 // when building the HNSW index.

@@ -70,47 +70,7 @@ func (v *vectorRetriever) GetType() string        { return "Vector" }
 func (v *vectorRetriever) IsCallbacksEnabled() bool { return true }
 
 func (v *vectorRetriever) hydrate(ctx context.Context, matches []VectorMatch, limit int) ([]*schema.Document, error) {
-	if len(matches) == 0 {
-		return []*schema.Document{}, nil
-	}
-	ids := make([]string, len(matches))
-	sim := make(map[string]float64, len(matches))
-	for i, m := range matches {
-		ids[i] = m.ID
-		sim[m.ID] = m.Similarity
-	}
-
-	chunks, err := v.chunks.GetChunksByIDs(ctx, ids)
-	if err != nil {
-		return nil, fmt.Errorf("vector retriever: hydrate: %w", err)
-	}
-
-	results := make([]*schema.Document, 0, len(chunks))
-	for _, ch := range chunks {
-		meta := map[string]any{}
-		if ch.FileID != "" {
-			meta[DocumentMetaFileID] = ch.FileID
-		}
-		if ch.Type != "" {
-			meta[DocumentMetaType] = ch.Type
-		}
-		meta[DocumentMetaIndex] = int(ch.Index)
-		if ch.ParentID != "" {
-			meta[DocumentMetaParentID] = ch.ParentID
-		}
-		if ch.Metadata != "" {
-			meta[DocumentMetaRaw] = ch.Metadata
-		}
-		results = append(results, (&schema.Document{
-			ID:      ch.ID,
-			Content: ch.Text,
-			MetaData: meta,
-		}).WithScore(sim[ch.ID]))
-		if len(results) >= limit {
-			break
-		}
-	}
-	return results, nil
+	return hydrateChunks(ctx, v.chunks, matches, limit, "vector retriever")
 }
 
 // --- keyword sub-retriever ---
@@ -162,6 +122,13 @@ func (k *keywordRetriever) GetType() string        { return "Keyword" }
 func (k *keywordRetriever) IsCallbacksEnabled() bool { return true }
 
 func (k *keywordRetriever) hydrate(ctx context.Context, matches []VectorMatch, limit int) ([]*schema.Document, error) {
+	return hydrateChunks(ctx, k.chunks, matches, limit, "keyword retriever")
+}
+
+// hydrateChunks is the shared hydration logic for both vector and keyword
+// retrievers. It fetches chunk text from the ChunkStore and builds
+// schema.Document values with standard metadata keys.
+func hydrateChunks(ctx context.Context, chunks ChunkStore, matches []VectorMatch, limit int, errPrefix string) ([]*schema.Document, error) {
 	if len(matches) == 0 {
 		return []*schema.Document{}, nil
 	}
@@ -172,13 +139,13 @@ func (k *keywordRetriever) hydrate(ctx context.Context, matches []VectorMatch, l
 		sim[m.ID] = m.Similarity
 	}
 
-	chunks, err := k.chunks.GetChunksByIDs(ctx, ids)
+	storeChunks, err := chunks.GetChunksByIDs(ctx, ids)
 	if err != nil {
-		return nil, fmt.Errorf("keyword retriever: hydrate: %w", err)
+		return nil, fmt.Errorf("%s: hydrate: %w", errPrefix, err)
 	}
 
-	results := make([]*schema.Document, 0, len(chunks))
-	for _, ch := range chunks {
+	results := make([]*schema.Document, 0, len(storeChunks))
+	for _, ch := range storeChunks {
 		meta := map[string]any{}
 		if ch.FileID != "" {
 			meta[DocumentMetaFileID] = ch.FileID
@@ -194,8 +161,8 @@ func (k *keywordRetriever) hydrate(ctx context.Context, matches []VectorMatch, l
 			meta[DocumentMetaRaw] = ch.Metadata
 		}
 		results = append(results, (&schema.Document{
-			ID:      ch.ID,
-			Content: ch.Text,
+			ID:       ch.ID,
+			Content:  ch.Text,
 			MetaData: meta,
 		}).WithScore(sim[ch.ID]))
 		if len(results) >= limit {
