@@ -9,6 +9,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
 )
 
@@ -204,7 +205,7 @@ func (s *PublicEmbeddingsStore) withTenantGuard(ctx context.Context, tenantID st
 		return fmt.Errorf("public_embeddings_store: begin tenant-guarded tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(ctx, "SET LOCAL app.tenant_id = $1", tenantID); err != nil {
+	if _, err := tx.Exec(ctx, fmt.Sprintf("SET LOCAL app.tenant_id = %s", pq.QuoteLiteral(tenantID))); err != nil {
 		return fmt.Errorf("public_embeddings_store: set tenant: %w", err)
 	}
 	return fn(tx)
