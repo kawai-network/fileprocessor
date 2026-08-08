@@ -53,6 +53,12 @@ type SearchParams struct {
 	// FileIDs restricts the search to chunks belonging to these files when the
 	// backing store supports scoped search.
 	FileIDs []string
+	// TenantID, when non-empty on stores that enforce it (e.g.
+	// PublicEmbeddingsStore), scopes the search via a SET LOCAL app.tenant_id
+	// transaction so Postgres RLS policies filter at the source rather than via
+	// in-memory allowlists. Empty keeps the legacy pool-query path (architecture
+	// review R3).
+	TenantID string
 }
 
 // KeywordSearcher is an optional text-search capability implemented by stores

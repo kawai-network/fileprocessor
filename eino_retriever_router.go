@@ -51,6 +51,7 @@ func (v *vectorRetriever) Retrieve(ctx context.Context, query string, opts ...re
 		Limit:   candidateLimit,
 		Metric:  io.Metric,
 		FileIDs: io.FileIDs,
+		TenantID: io.TenantID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("vector retriever: search: %w", err)
@@ -142,6 +143,7 @@ func (k *keywordRetriever) Retrieve(ctx context.Context, query string, opts ...r
 	matches, err := k.keyword.KeywordSearch(ctx, query, SearchParams{
 		Limit:   candidateLimit,
 		FileIDs: io.FileIDs,
+		TenantID: io.TenantID,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("keyword retriever: search: %w", err)

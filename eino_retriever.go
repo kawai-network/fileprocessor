@@ -232,6 +232,7 @@ type HybridOptions struct {
 	KeywordThreshold float64
 	Metric           DistanceMetric
 	ExpandParent     bool
+	TenantID         string
 }
 
 // WithFileIDs restricts results to chunks belonging to the given files.
@@ -266,6 +267,15 @@ func WithMetric(m DistanceMetric) retriever.Option {
 func WithExpandParent(v bool) retriever.Option {
 	return retriever.WrapImplSpecificOptFn(func(o *HybridOptions) {
 		o.ExpandParent = v
+	})
+}
+
+// WithTenantID scopes retrieval to a tenant via SET LOCAL app.tenant_id on
+// stores that enforce it (PublicEmbeddingsStore + RLS). Empty keeps the legacy
+// in-memory allowlist path (architecture review R3).
+func WithTenantID(tenantID string) retriever.Option {
+	return retriever.WrapImplSpecificOptFn(func(o *HybridOptions) {
+		o.TenantID = tenantID
 	})
 }
 

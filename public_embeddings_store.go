@@ -183,6 +183,33 @@ func (s *PublicEmbeddingsStore) verifyColumn(ctx context.Context) error {
 	return nil
 }
 
+// pgQueryer is the query capability shared by *pgxpool.Pool and pgx.Tx.
+type pgQueryer interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// withTenantGuard runs fn inside a short-lived transaction with
+// SET LOCAL app.tenant_id = tenantID when tenantID is non-empty, so the RLS
+// policies on files/file_chunks/chunks enforce tenant isolation at the DB
+// boundary rather than via the in-memory file-ID allowlist. Rows must be fully
+// consumed inside fn (before it returns), because the tx is rolled back
+// afterwards. When tenantID is empty, fn runs against the pool directly
+// (legacy path, unchanged behavior). See architecture review R3.
+func (s *PublicEmbeddingsStore) withTenantGuard(ctx context.Context, tenantID string, fn func(pgQueryer) error) error {
+	if tenantID == "" {
+		return fn(s.pool)
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("public_embeddings_store: begin tenant-guarded tx: %w", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if _, err := tx.Exec(ctx, "SET LOCAL app.tenant_id = $1", tenantID); err != nil {
+		return fmt.Errorf("public_embeddings_store: set tenant: %w", err)
+	}
+	return fn(tx)
+}
+
 // --- VectorStore implementation -------------------------------------------
 
 // Upsert inserts or updates a single embedding. The id parameter is
@@ -296,12 +323,27 @@ func (s *PublicEmbeddingsStore) Search(ctx context.Context, embedding []float32,
 		LIMIT $2
 	`, op, where)
 
-	rows, err := s.pool.Query(ctx, q, args...)
+	var out []VectorMatch
+	if err := s.withTenantGuard(ctx, params.TenantID, func(qr pgQueryer) error {
+		collected, err := s.searchImpl(ctx, qr, q, args, metric, limit)
+		if err != nil {
+			return err
+		}
+		out = collected
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// searchImpl builds and runs the vector-search query against queryer q.
+func (s *PublicEmbeddingsStore) searchImpl(ctx context.Context, q pgQueryer, sql string, args []any, metric DistanceMetric, limit int) ([]VectorMatch, error) {
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("public_embeddings_store: search: %w", err)
 	}
 	defer rows.Close()
-
 	out, err := collectSearchResults(rows, metric, limit)
 	if err != nil {
 		return nil, fmt.Errorf("public_embeddings_store: %w", err)
@@ -331,7 +373,23 @@ func (s *PublicEmbeddingsStore) KeywordSearch(ctx context.Context, query string,
 		ORDER BY score DESC, c.id
 		LIMIT $2
 	`, where)
-	rows, err := s.pool.Query(ctx, q, args...)
+	var out []VectorMatch
+	if err := s.withTenantGuard(ctx, params.TenantID, func(qr pgQueryer) error {
+		collected, err := s.keywordSearchImpl(ctx, qr, q, args, limit)
+		if err != nil {
+			return err
+		}
+		out = collected
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// keywordSearchImpl runs the FTS query against queryer q and collects matches.
+func (s *PublicEmbeddingsStore) keywordSearchImpl(ctx context.Context, q pgQueryer, sql string, args []any, limit int) ([]VectorMatch, error) {
+	rows, err := q.Query(ctx, sql, args...)
 	if err != nil {
 		return nil, fmt.Errorf("public_embeddings_store: keyword search: %w", err)
 	}
