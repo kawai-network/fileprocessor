@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
@@ -150,7 +151,15 @@ func (s *PublicEmbeddingsStore) init(ctx context.Context) error {
 		ON public.embeddings USING hnsw (embeddings %s)
 	`, hnswIndexName, ops)
 	if _, err := s.pool.Exec(ctx, q); err != nil {
-		return fmt.Errorf("public_embeddings_store: create hnsw index: %w", err)
+		// Permission error (42501) means the DB user is read-only (e.g.
+		// kawai_kb_reader). The index likely already exists (created by a
+		// privileged role). Log and continue — search will be slower but
+		// functional. Any other error is fatal.
+		if pgErr, ok := err.(*pgconn.PgError); ok && pgErr.Code == "42501" {
+			slog.Warn("public_embeddings_store: cannot create HNSW index (permission denied, assuming it exists)", "error", err)
+		} else {
+			return fmt.Errorf("public_embeddings_store: create hnsw index: %w", err)
+		}
 	}
 
 	// Apply per-session ef_search.
